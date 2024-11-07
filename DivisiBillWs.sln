@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.6.33513.286
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DivisiBillWs", "DivisiBillWs\DivisiBillWs.csproj", "{8A528958-BF01-40D8-BE68-F1060B1E369C}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{504F1172-D78C-49FA-87B0-E128CE14D77B}"
+	ProjectSection(SolutionItems) = preProject
+		.github\workflows\azure-functions-app-release-alternate.yml = .github\workflows\azure-functions-app-release-alternate.yml
+		README.md = README.md
+	EndProjectSection
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8A528958-BF01-40D8-BE68-F1060B1E369C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8A528958-BF01-40D8-BE68-F1060B1E369C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8A528958-BF01-40D8-BE68-F1060B1E369C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8A528958-BF01-40D8-BE68-F1060B1E369C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {7435D7BF-B5E5-4C4B-824E-FA0057BA1FF5}
+	EndGlobalSection
+EndGlobal
