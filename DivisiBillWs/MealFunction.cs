@@ -32,7 +32,6 @@ public class MealFunction
 
         string? userKey = await authorization.GetAuthorizedUserKeyAsync(req);
         if (userKey == null)
-            if (userKey == null)
         {
             logger.LogInformation($"MealFunction authorization failed, returning BadRequest");
             return await req.MakeResponseAsync(HttpStatusCode.BadRequest);
