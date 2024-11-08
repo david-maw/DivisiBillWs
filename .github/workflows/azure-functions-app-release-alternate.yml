@@ -55,7 +55,7 @@ jobs:
         DIVISIBILL_WS_CS_KEY: ${{ secrets.DIVISIBILL_WS_CS_KEY }}
       run: |
         pushd './${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}'
-        dotnet build --configuration Release --output ./output
+        dotnet build DivisiBillWs/DivisiBillWs.csproj --configuration Release --output ./output
         popd
 
     - name: 'Run Azure Functions Action'
