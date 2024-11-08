@@ -256,16 +256,18 @@ gh secret set DIVISIBILL_PLAY_CREDENTIALS -b "$env:DIVISIBILL_PLAY_CREDENTIALS";
 gh secret set DIVISIBILL_WS_CS_EP         -b "$env:DIVISIBILL_WS_CS_EP";
 gh secret set DIVISIBILL_WS_CS_KEY        -b "$env:DIVISIBILL_WS_CS_KEY";
 ```
-The secret used for the build process is not in a local environment variable so you'll need to 
-set it explicitly, typically from a file. That's easiest at a command prompt rather than in PowerShell:
+Azure provides a "publish profile" for automated deployment; get it from the Function App definition in Azure, if
+you use primary/alternate slots don't forget to get the publish profile from the one you actually want to publish to.
+The corresponding secret used to pass the publish profile to the deployment process is not in a local environment 
+variable so you'll need to set it explicitly, typically from a file. That's more concise at a command prompt rather than 
+in PowerShell:
 ```
-gh secret set AZURE_FUNCTIONAPP_PUBLISH_PROFILE_RELEASE_ALTERNATE < publish.profile.xml;
+gh secret set AZURE_FUNCTIONAPP_PUBLISH_PROFILE_RELEASE_ALTERNATE < publish.profile;
 ```
 or, in PowerShell:
 ```
-gh Get-Content publish.profile.xml | secret set AZURE_FUNCTIONAPP_PUBLISH_PROFILE_RELEASE_ALTERNATE
+gh Get-Content publish.profile | secret set AZURE_FUNCTIONAPP_PUBLISH_PROFILE_RELEASE_ALTERNATE
 ```
-
 Google Service Account
 ----------------------
 
@@ -303,11 +305,5 @@ If you want to put it in a string instead, use
 > b64DecodedString = [System.Text.Encoding]::UTF8.GetString($b64Decoded)
 
 Unfortunately this function is not available in MsBuild (at least as of .NET8) so you cannot do the conversion in the csproj file and just write the JSON to a string.
-
-Azure Function Deployment Secret
---------------------------------
-
-The last step of the CI/CD process is to deploy the newly built function app to Azure and to do this you need valid
-credentials, Azure provides a "publish profile" for this purpose. The publish profile data is stored in a GitHub secret called AZURE_FUNCTIONAPP_PUBLISH_PROFILE_RELEASE_ALTERNATE.
 
 <center>* * * * * * </center>
