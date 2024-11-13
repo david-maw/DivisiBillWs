@@ -30,6 +30,13 @@ Read through the section on "Build Information and Secrets" and "Automated Build
 below for more information, especially on how and why we use Base-64 encoding and the mechanism 
 by which this stuff is made available at runtime.
 
+Local Files
+-----------
+
+Really, properties\launchsettings.json and local.settings.json ought not to be in the repository because they
+may contain secrets. Still, versions of those files are checked in just to make life easier for someone who 
+wants to to try out the code.
+
 Branching strategy
 ------------------
 
