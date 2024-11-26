@@ -129,13 +129,13 @@ namespace DivisiBillWs
             // Validate 'before'
             if (before != null && !before.IsValidName())
             {
-                logger.LogInformation($"Meals before specification unacceptable, returning error");
+                logger.LogInformation($"The 'before' specification is unacceptable, returning error");
                 return await req.MakeResponseAsync(HttpStatusCode.BadRequest);
             }
 
-            // Force 'top' to be 1-100 
-            if (string.IsNullOrWhiteSpace(topString) || !int.TryParse(topString, out int top) || top > 100 || top < 1)
-                top = 100;
+            const int MaxItems = 1000;
+            if (string.IsNullOrWhiteSpace(topString) || !int.TryParse(topString, out int top) || top > MaxItems || top < 1)
+                return await req.MakeResponseAsync(HttpStatusCode.NotImplemented);
 
             logger.LogInformation($"In DataStore.Enumerate, enumerate data in {tableClient.Name}, before = '{before}'");
             string query = $"PartitionKey eq '{userKey}'";

@@ -60,21 +60,6 @@ public class MealFunction
             return await req.MakeResponseAsync(HttpStatusCode.BadRequest);
         }
 
-        var query = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
-        string? before = query["before"];
-        string? topString = query["top"];
-
-        // Validate 'before'
-        if (before != null && !before.IsValidName())
-        {
-            logger.LogInformation($"Meals before specification unacceptable, returning error");
-            return await req.MakeResponseAsync(HttpStatusCode.BadRequest);
-        }
-
-        // Force 'top' to be 1-100 
-        if (string.IsNullOrWhiteSpace(topString) || !int.TryParse(topString, out int top) || top > 100 || top < 1)
-            top = 100;
-
         // Now do the actual work
         return await storage.EnumerateAsync(req, userKey);
     }
