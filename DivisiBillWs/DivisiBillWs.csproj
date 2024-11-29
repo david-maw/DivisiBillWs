@@ -44,8 +44,7 @@
   Note that DIVISIBILL_PLAY_CREDENTIALS should be a long (typically 4kB) base64 text string
   -->
   <PropertyGroup>
-    <DivisiBillSentryDsn Condition="$(Configuration) == release">$(DIVISIBILL_SENTRY_DSN_RELEASE)</DivisiBillSentryDsn>
-    <DivisiBillSentryDsn Condition="'$(DivisiBillSentryDsn)' == ''">$(DIVISIBILL_SENTRY_DSN)</DivisiBillSentryDsn>
+    <DivisiBillSentryDsn Condition="'$(DivisiBillSentryDsn)' == ''">$(DIVISIBILLWS_SENTRY_DSN)</DivisiBillSentryDsn>
     <BuildInfoText>
       <![CDATA[
 //----------------------

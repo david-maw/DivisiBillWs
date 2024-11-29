@@ -49,7 +49,7 @@ jobs:
     - name: Build
       shell: pwsh # For Linux, use bash
       env:
-        DIVISIBILL_SENTRY_DSN: ${{ secrets.DIVISIBILL_SENTRY_DSN }}
+        DIVISIBILLWS_SENTRY_DSN: ${{ secrets.DIVISIBILLWS_SENTRY_DSN }}
         DIVISIBILL_PLAY_CREDENTIALS: ${{ secrets.DIVISIBILL_PLAY_CREDENTIALS }}
         DIVISIBILL_WS_CS_EP: ${{ secrets.DIVISIBILL_WS_CS_EP }}
         DIVISIBILL_WS_CS_KEY: ${{ secrets.DIVISIBILL_WS_CS_KEY }}
