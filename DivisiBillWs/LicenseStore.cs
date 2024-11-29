@@ -83,8 +83,11 @@ namespace DivisiBillWs
                 {
                     logger.LogInformation($"In LicenseStore.GetTokenIfNew for {userKey} found {tokenTable.Name}[{PartitionKeyName}, {proTokenInfo.RowKey}] expiring, " +
                         "returning a replacement");
-                    InternalClearToken(userKey, proTokenInfo);
-                    return GenerateToken(userKey);
+                    if (InternalClearToken(userKey, proTokenInfo))
+                        return GenerateToken(userKey);
+                    else
+                        logger.LogInformation($"In LicenseStore.GetTokenIfNew for {userKey} found {tokenTable.Name}[{PartitionKeyName}, {proTokenInfo.RowKey}] but it went away, " +
+                            "returning null");
                 }
                 else
                     logger.LogInformation($"In LicenseStore.GetTokenIfNew for {userKey} found {tokenTable.Name}[{PartitionKeyName}, {proTokenInfo.RowKey}] is not expiring, " +
@@ -98,30 +101,27 @@ namespace DivisiBillWs
             return null;
         }
 
-        public void ClearToken(string Userkey) => InternalClearToken(Userkey);
-
         /// <summary>
         /// Delete any existing token
         /// </summary>
+        /// Returns true if the token was cleared.
         /// <exception cref="ApplicationException"></exception>
-        private void InternalClearToken(string userKey, TokenInfo? oldTokenInfo = null) 
+        private bool InternalClearToken(string userKey, TokenInfo oldTokenInfo) 
         {
-            if (oldTokenInfo == null)
-                oldTokenInfo = tokenTable.Query<TokenInfo>(ti => ti.ProOrderId == userKey).FirstOrDefault();
-            if (oldTokenInfo != null)
+            var response = tokenTable.DeleteEntity(oldTokenInfo.PartitionKey, oldTokenInfo.RowKey);
+            if (response == null || response.IsError)
             {
-                var response = tokenTable.DeleteEntity(oldTokenInfo.PartitionKey, oldTokenInfo.RowKey);
-                if (response == null || response.IsError)
+                // Possibly another thread already removed it, so only report an error if it is not still there
+                if (tokenTable.Query<TokenInfo>(ti => ti.PartitionKey.Equals(oldTokenInfo.PartitionKey) && ti.RowKey.Equals(oldTokenInfo.RowKey) && ti.ProOrderId == userKey).FirstOrDefault() == null)
+                    return false; // the token has gone, removed by another thread perhaps, but in any event, not by us
+                else
                 {
-                    // Possibly another thread already removed it
-                    if (tokenTable.Query<TokenInfo>(ti => ti.ProOrderId == userKey).FirstOrDefault() != null)
-                    {
-                        logger.LogError($"In LicenseStore.ClearToken for {userKey} found {tokenTable.Name}[{PartitionKeyName}, {oldTokenInfo.RowKey}], unable to remove it, throwing exception");
-                        throw new ApplicationException("prior token removal failed"); 
-                    }
+                    string responseInfo = (response != null) ? ", response = " + response.ToString() : "";
+                    logger.LogError($"In LicenseStore.ClearToken for {userKey} found {tokenTable.Name}[{PartitionKeyName}, {oldTokenInfo.RowKey}], unable to remove it, throwing exception");
+                    throw new ApplicationException("Token Removal Failed" + responseInfo); 
                 }
-             }
-            // At this point the old one, if any, has gone
+            }
+            return true;
         }
         /// <summary>
         /// Create a token and insert it in the table
