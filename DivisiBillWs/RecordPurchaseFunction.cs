@@ -14,7 +14,7 @@ namespace DivisiBillWs
 
         LicenseStore licenseStore;
 
-        public async Task<bool> RecordAsync(AndroidPurchase? androidPurchase, bool isSubscription)
+        internal static async Task<bool> RecordAsync(AndroidPurchase? androidPurchase, bool isSubscription, ILogger logger, LicenseStore licenseStore)
         {
             if (androidPurchase == null)
                 logger.LogError("In RecordPurchaseFunction, could not deserialize a purchase with an OrderId");
@@ -81,17 +81,14 @@ namespace DivisiBillWs
                 }
                 if (!verifiedWithStore)
                     logger.LogError("In RecordPurchaseFunction, could not verify purchase with Google");
-                else if (verifiedAcknowledgementState == 0)
+                else
                     {
-                        logger.LogInformation("In RecordPurchaseFunction, successfully verified unacknowledged purchase with Google, checking license table");
-                        // All is well so far and we have a legitimately issued license which has not been acknowledged
+                        logger.LogInformation($"In RecordPurchaseFunction, successfully verified {(verifiedAcknowledgementState == 1 ? "acknowledged" : "unacknowledged")} purchase with Google, checking license table");
+                        // All is well so far and we have a legitimately issued license
                         // Now ensure it is not already known and if not, remember it for the future
                         bool recorded = await licenseStore.RecordAsync(androidPurchase.ProductId, androidPurchase.OrderId, androidPurchase.Quantity, androidPurchase.ObfuscatedAccountId);
                         return recorded;
                     }
-                else
-                    logger.LogError("In RecordPurchaseFunction, purchase already acknowledged AcknowledgementState=" + verifiedAcknowledgementState);
-
             }
             return false;
         }
@@ -119,7 +116,7 @@ namespace DivisiBillWs
                 return await req.MakeResponseAsync(HttpStatusCode.BadRequest);
             }
 
-            bool recorded = await RecordAsync(androidPurchase, isSubscription: subscription.Equals("1"));
+            bool recorded = await RecordAsync(androidPurchase, isSubscription: subscription.Equals("1"), logger, licenseStore);
 
             if (recorded)
                 return await req.OkResponseAsync();

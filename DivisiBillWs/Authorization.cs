@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Diagnostics;
 
 namespace DivisiBillWs
@@ -50,8 +49,9 @@ namespace DivisiBillWs
             return null;
         }
         /// <summary>
-        /// Evaluate whether an alleged license is authorized, called from functions requiring authorization of an
-        /// AndroidPurchase object.
+        /// Evaluate whether an alleged license is authorized, called indirectly via <see cref="GetAuthorizedUserKeyAsync"/> from 
+        /// functions requiring authorization of an AndroidPurchase object before they'll do work (which is most functions).
+        /// <see cref="ScanFunction"/> calls it directly, mostly for historical reasons.
         /// 
         /// The terms 'license' and 'product' are often synonymous, it's called a license in most of the code, but we avoid
         /// using the word license as much as possible in user facing text. 
@@ -138,6 +138,14 @@ namespace DivisiBillWs
                 Debug.Assert(androidPurchase.ProductId != null);
 
                 int scans = await licenseStore.GetScansAsync(androidPurchase.OrderId!); // Tells us it is one of ours
+
+                if (scans == -1)
+                {
+                    // The license was verified by the Play Store but not known to us; that's no great problem, just store it and try again
+                    bool recorded = await RecordPurchaseFunction.RecordAsync(androidPurchase, isSubscription, logger, licenseStore);
+                    if (recorded)
+                        scans = await licenseStore.GetScansAsync(androidPurchase.OrderId!);
+                }
 
                 if (scans >= 0)
                 {

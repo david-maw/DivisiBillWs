@@ -6,6 +6,14 @@ using Google.Apis.AndroidPublisher.v3.Data;
 namespace DivisiBillWs;
 internal class PlayStore
 {
+    /// <summary>
+    /// Check whether a purchase is recognized by the Play Store and is known by us
+    /// Store it if it is not known by us so it will be known in future.
+    /// </summary>
+    /// <param name="logger"></param>
+    /// <param name="androidPurchase"></param>
+    /// <param name="isSubscription"></param>
+    /// <returns></returns>
     internal static bool VerifyPurchase(ILogger logger, AndroidPurchase? androidPurchase, bool isSubscription)
     {
         bool isPermittedTestOrderId = false;
@@ -99,9 +107,7 @@ internal class PlayStore
                 logger.LogError("In VerifyPurchase, could not verify purchase with Google");
             else
             {
-                if (verifiedAcknowledgementState == 0)
-                    logger.LogError("In VerifyPurchase, purchase not acknowledged");
-                else if (verifiedOrderId == null)
+                if (verifiedOrderId == null)
                     logger.LogError("In VerifyPurchase, purchase.OrderId is null");
                 else if (isPermittedTestOrderId)
                 {
@@ -110,7 +116,7 @@ internal class PlayStore
                 }
                 else
                 {
-                    logger.LogInformation("In VerifyPurchase, successfully verified purchase with Google");
+                    logger.LogInformation($"In VerifyPurchase, successfully verified {(verifiedAcknowledgementState == 1 ? "acknowledged" : "unacknowledged")} purchase with Google");
                     return true;
                 }
             }
