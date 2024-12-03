@@ -24,6 +24,7 @@ namespace DivisiBillWs
             public int ScansLeft { get; set; } = default;
             public DateTimeOffset TimeCreated { get; set; } = DateTime.Now; // Set when creating item
             public string ObfuscatedAccountId { get; set; } = default!;
+            public DateTimeOffset TimeUsed { get; set; } = default; // Set when using this license
 
             // Required for ITableEntity
             public string RowKey { get; set; } = default!; // User must provide a value
@@ -229,7 +230,7 @@ namespace DivisiBillWs
                     RowKey = OrderId,
                     ProductId = ProductId,
                     ObfuscatedAccountId = obfuscatedAccountId,
-                    TimeCreated = DateTime.Now,
+                    TimeCreated = DateTime.UtcNow,
                 };
                 List<TableTransactionAction> batch = new();
                 if (ProductId.Equals(OcrLicenseProductId)) // This is an OCR license, so add up the counts remaining on previous ones and apply them to the new one
@@ -283,12 +284,31 @@ namespace DivisiBillWs
                 );
             if (purchaseInfoResponse.HasValue && purchaseInfoResponse.Value is PurchaseInfo purchaseInfo && purchaseInfo.ScansLeft > 0)
             {
+                purchaseInfo.TimeUsed = DateTime.UtcNow;
                 purchaseInfo.ScansLeft--;
                 await tableClient.UpdateEntityAsync(purchaseInfo,purchaseInfo.ETag);
                 return purchaseInfo.ScansLeft;
             }
             else
                 return 0;
+        }
+        public async Task<bool> UpdateTimeUsedAsync(string orderId)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(orderId);
+
+            logger.LogInformation($"In UpdateImeUsed, orderId = {orderId}");
+
+            NullableResponse<PurchaseInfo> purchaseInfoResponse = await tableClient.GetEntityIfExistsAsync<PurchaseInfo>(
+                rowKey: orderId,
+                partitionKey: PartitionKeyName
+                );
+            if (purchaseInfoResponse.HasValue && purchaseInfoResponse.Value is PurchaseInfo purchaseInfo)
+            {
+                purchaseInfo.TimeUsed = DateTime.UtcNow;
+                await tableClient.UpdateEntityAsync(purchaseInfo, purchaseInfo.ETag);
+                return true;
+            }
+            return false;
         }
     }
 }

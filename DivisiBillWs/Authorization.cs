@@ -49,12 +49,17 @@ namespace DivisiBillWs
             return null;
         }
         /// <summary>
-        /// Evaluate whether an alleged license is authorized, called indirectly via <see cref="GetAuthorizedUserKeyAsync"/> from 
+        /// Evaluate whether an alleged license passed as authorization with a request to do something is known by us and by the 
+        /// app store, called indirectly via <see cref="GetAuthorizedUserKeyAsync"/> from 
         /// functions requiring authorization of an AndroidPurchase object before they'll do work (which is most functions).
         /// <see cref="ScanFunction"/> calls it directly, mostly for historical reasons.
+        ///
+        /// There's an explicit license validation call <see cref="GetIsVerifiedAsync"/> which is used to authenticate a license and
+        /// store it away so it can be used in other calls where it will be validated by this function.
         /// 
         /// The terms 'license' and 'product' are often synonymous, it's called a license in most of the code, but we avoid
-        /// using the word license as much as possible in user facing text. 
+        /// using the word license as much as possible in user facing text where we often need to distinguish a one-time purchase 
+        /// of OCR scand from the expiring Pro subscription.
         /// </summary>
         /// <param name="androidPurchase">The incoming object to be verified</param>
         /// <returns>True if the request passed authorization checks</returns>
@@ -107,14 +112,16 @@ namespace DivisiBillWs
                 ? androidPurchase : null;
         }
         /// <summary>
-        /// Called by the verify function to validate a license issued by an app store. The license is passed as the request body.
+        /// <para>Called by the verify function to validate a license issued by an app store. The license is passed as the request body.
         /// Assuming it passes verification then if the license is a pro license it is going to be passed in a header to be used 
-        /// for future authentication, if it any other kind of license (an OCR license today) a pro license must be passed in a 
-        /// header. If it is an OCR license the count of scans it has will be added to the pro count and its own count will be 
-        /// zeroed. This is called to verify every license DivisiBill uses.
+        /// for future authentication <see cref="GetIsAuthorizedAsync"/> so it is stored there. Other license types are just validated.</para> 
+        /// 
+        /// <para>The last use time of the license is updated whenever this function is called by calling <see cref="LicenseStore.UpdateTimeUsedAsync"/></para> 
+        /// 
+        /// <para>This is called at least once to verify every license DivisiBill uses.</para>
         /// </summary>
         /// <param name="req">The incoming HttpRequest object</param>
-        /// <returns>The OrderId of the license</returns>
+        /// <returns>The number of remaining scans allocated to this license</returns>
         /// <param name="isSubscription">Whether the license being verified is for a subscription or a product</param>
         internal async Task<HttpResponseData> GetIsVerifiedAsync(HttpRequestData req, bool isSubscription)
         {
@@ -149,6 +156,7 @@ namespace DivisiBillWs
 
                 if (scans >= 0)
                 {
+                    await licenseStore.UpdateTimeUsedAsync(androidPurchase.OrderId);
                     // if and only if we were verifying a pro license then generate a token
                     if (androidPurchase.ProductId.Equals(LicenseStore.ProSubscriptionId) || androidPurchase.ProductId.Equals(LicenseStore.ProSubscriptionIdOld))
                     {
