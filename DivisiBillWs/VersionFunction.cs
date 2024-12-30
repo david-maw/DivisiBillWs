@@ -1,4 +1,6 @@
 using DivisiBillWs.Generated; // The build time information  created by the msbuild of the project file
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Hosting;
 
 namespace DivisiBillWs;
@@ -8,7 +10,7 @@ public class VersionFunction
     private readonly ILogger _logger;
     private readonly IHostEnvironment env;
     private readonly bool IsDebug =
-    #if DEBUG
+#if DEBUG
             true;
 #else
             false;
@@ -24,11 +26,11 @@ public class VersionFunction
     /// Beware, according to https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference?tabs=blob#parallel-execution
     /// a the function code may be simultaneously executed on multiple threads.
     [Function("version")]
-    public async Task<HttpResponseData> Run([HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequestData req)
+    public IActionResult Run([HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequest req)
     {
         _logger.LogInformation("The 'version' web service function is processing a request.");
 
-        return await req.MakeResponseAsync(HttpStatusCode.OK,$""" 
+        return new OkObjectResult($""" 
             Application: {env.ApplicationName} 
             Application_Version: {typeof(VersionFunction).Assembly.GetName().Version}
             NET_Version: {typeof(int).Assembly.GetName().Version}
