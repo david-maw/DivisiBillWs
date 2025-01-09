@@ -20,6 +20,7 @@ internal class LicenseStore
     private class PurchaseInfo : ITableEntity
     {
         // Purchase data
+        public string PurchaseToken { get; set; } = default!;
         public string ProductId { get; set; } = default!;
         public int ScansLeft { get; set; } = default;
         public DateTimeOffset TimeCreated { get; set; } = DateTime.Now; // Set when creating item
@@ -178,97 +179,119 @@ internal class LicenseStore
     /// </summary>
     /// <param name="OrderId">The unique key that distinguishes license instances</param>
     /// <returns>The number of scans remaining for this license or -1 if the license was not found</returns>
-    public async Task<int> GetScansAsync(string OrderId)
+    public async Task<int> GetScansAsync(AndroidPurchase androidPurchase)
     {
-        ArgumentException.ThrowIfNullOrEmpty(OrderId);
+        ArgumentException.ThrowIfNullOrEmpty(androidPurchase.OrderId);
+        ArgumentException.ThrowIfNullOrEmpty(androidPurchase.PurchaseToken); // can be validated by calling Google
 
         NullableResponse<PurchaseInfo> purchaseInfoResponse = await tableClient.GetEntityIfExistsAsync<PurchaseInfo>(
-            rowKey: OrderId,
+            rowKey: androidPurchase.OrderId,
             partitionKey: PartitionKeyName
             );
-        if (purchaseInfoResponse.HasValue)
+        if (purchaseInfoResponse.HasValue && purchaseInfoResponse!.Value is PurchaseInfo purchaseInfo
+            && (string.IsNullOrEmpty(purchaseInfo.PurchaseToken) || purchaseInfo.PurchaseToken.Equals(androidPurchase.PurchaseToken)))
         {
-            logger.LogInformation($"In LicenseStore.GetScans, {tableClient.Name}[{PartitionKeyName}, {OrderId}] has value, returning " + purchaseInfoResponse!.Value!.ScansLeft);
-            return purchaseInfoResponse!.Value!.ScansLeft;
+            if (string.IsNullOrEmpty(purchaseInfo.PurchaseToken))
+            {
+                // We have not yet recorded a PurchaseToken for this purchase, make sure it is unique and record it
+                bool alreadyInUse = tableClient.QueryAsync<PurchaseInfo>(r => r.PurchaseToken.Equals(androidPurchase.PurchaseToken)).ToBlockingEnumerable().Any();
+                if (alreadyInUse)
+                {
+                    logger.LogError($"In LicenseStore.GetScans, PurchaseToken {androidPurchase.PurchaseToken}] already in use found, returning error");
+                    return -2;
+                }
+                purchaseInfo.PurchaseToken = androidPurchase.PurchaseToken;
+                await tableClient.UpdateEntityAsync(purchaseInfo, purchaseInfo.ETag);
+            }
+            logger.LogInformation($"In LicenseStore.GetScans, {tableClient.Name}[{PartitionKeyName}, {androidPurchase.OrderId}] has value, returning " + purchaseInfo.ScansLeft);
+            return purchaseInfo.ScansLeft;
         }
         else
         {
-            logger.LogInformation($"In LicenseStore.GetScans, {tableClient.Name}[{PartitionKeyName}, {OrderId}] not found, returning error");
+            logger.LogError($"In LicenseStore.GetScans, {tableClient.Name}[{PartitionKeyName}, {androidPurchase.OrderId}] not found, returning error");
             return -1;
         }
     }
     /// <summary>
-    /// Record a new license, making sure it is not already known (by its OrderId) 
+    /// Record a new license, making sure it is not already known (by its OrderId) and does not reuse an existing PurchaseToken 
     /// </summary>
-    /// <param name="ProductId">The product ID - used to determine how many scans a new license is created with</param>
-    /// <param name="OrderId">The unique key that distinguishes license instances</param>
+    /// <param name="androidPurchase">The purchase information returned from Google</param>
     /// <returns>True if the license was recorded, false if it was already known</returns>
-    public async Task<bool> RecordAsync(string ProductId, string OrderId, int quantity, string obfuscatedAccountId)
+    public async Task<bool> RecordAsync(AndroidPurchase androidPurchase)
     {
-        ArgumentException.ThrowIfNullOrEmpty(ProductId);
-        ArgumentException.ThrowIfNullOrEmpty(OrderId);
+        ArgumentException.ThrowIfNullOrEmpty(androidPurchase.ProductId);
+        ArgumentException.ThrowIfNullOrEmpty(androidPurchase.OrderId);
 
         NullableResponse<PurchaseInfo> purchaseInfoResponse = tableClient.GetEntityIfExists<PurchaseInfo>(
-            rowKey: OrderId,
+            rowKey: androidPurchase.OrderId,
             partitionKey: PartitionKeyName
             );
         if (purchaseInfoResponse.HasValue)
         {
-            logger.LogInformation($"In LicenseStore.Record, {tableClient.Name}[{PartitionKeyName}, {OrderId}] has value, returning error");
+            logger.LogError($"In LicenseStore.Record, {tableClient.Name}[{PartitionKeyName}, {androidPurchase.OrderId}] has value, returning error");
             return false;
         }
-        else
+
+        logger.LogInformation($"In LicenseStore.Record, {tableClient.Name}[{PartitionKeyName}, {androidPurchase.OrderId}] does not exist");
+
+        // The PurchaseToken should not be in use yet, make sure that is so to prevent token reuse
+        bool alreadyInUse = tableClient.QueryAsync<PurchaseInfo>(r => r.PurchaseToken.Equals(androidPurchase.PurchaseToken)).ToBlockingEnumerable().Any();
+        if (alreadyInUse)
         {
-            logger.LogInformation($"In LicenseStore.Record, {tableClient.Name}[{PartitionKeyName}, {OrderId}] does not exist, adding it");
-
-            int totalScansLeft = 0;
-            // Create a new entry
-            PurchaseInfo purchaseInfo = new()
-            {
-                RowKey = OrderId,
-                ProductId = ProductId,
-                ObfuscatedAccountId = obfuscatedAccountId,
-                TimeCreated = DateTime.UtcNow,
-            };
-            List<TableTransactionAction> batch = [];
-            if (ProductId.Equals(OcrLicenseProductId)) // This is an OCR license, so add up the counts remaining on previous ones and apply them to the new one
-            {
-                // Count up the existing licenses
-                var v = tableClient.QueryAsync<PurchaseInfo>(r => r.ObfuscatedAccountId.Equals(obfuscatedAccountId) && r.ScansLeft > 0);
-
-                await foreach (var row in v)
-                    totalScansLeft += row.ScansLeft;
-                purchaseInfo.ScansLeft = totalScansLeft + OcrLicenseScans * int.Max(quantity, 1);
-                // Now add zeroing out the scan counts to the transaction
-                await foreach (var row in v)
-                {
-                    row.ScansLeft = 0;
-                    batch.Add(new TableTransactionAction(TableTransactionActionType.UpdateMerge, row));
-                }
-            }
-            bool completedOk = false;
-            if (batch.Count > 0) // There are some OCR record updates so make sure all or none succeed
-            {
-                batch.Add(new TableTransactionAction(TableTransactionActionType.Add, purchaseInfo));
-                try
-                {
-                    await tableClient.SubmitTransactionAsync(batch);
-                    completedOk = true;
-                }
-                catch (Exception)
-                {
-                    purchaseInfo.ScansLeft -= totalScansLeft; // because we did not zero all those records
-                }
-            }
-            // Either there were no existing records to update so there's just the one transaction and no need for a batch
-            // or the batch failed.
-            if (!completedOk)
-            {
-                var v = await tableClient.AddEntityAsync(purchaseInfo);
-                completedOk = !v.IsError;
-            }
-            return completedOk;
+            logger.LogError($"In LicenseStore.Record, {androidPurchase.PurchaseToken}] is already used, so we cannot add the license");
+            return false;
         }
+
+        logger.LogInformation($"In LicenseStore.Record, {androidPurchase.PurchaseToken}] is unknown to us, so we can add the license");
+
+        // Create a new entry
+        PurchaseInfo purchaseInfo = new()
+        {
+            RowKey = androidPurchase.OrderId,
+            ProductId = androidPurchase.ProductId,
+            ObfuscatedAccountId = androidPurchase.ObfuscatedAccountId ?? string.Empty,
+            PurchaseToken = androidPurchase.PurchaseToken,
+            TimeCreated = DateTime.UtcNow,
+        };
+        int totalScansLeft = 0;
+        List<TableTransactionAction> batch = [];
+        if (androidPurchase.ProductId.Equals(OcrLicenseProductId)) // This is an OCR license, so add up the counts remaining on previous ones and apply them to the new one
+        {
+            // Count up the existing licenses
+            var v = tableClient.QueryAsync<PurchaseInfo>(r => r.ObfuscatedAccountId.Equals(androidPurchase.ObfuscatedAccountId) && r.ScansLeft > 0);
+
+            await foreach (var row in v)
+                totalScansLeft += row.ScansLeft;
+            purchaseInfo.ScansLeft = totalScansLeft + OcrLicenseScans * int.Max(androidPurchase.Quantity, 1);
+            // Now add zeroing out the scan counts to the transaction
+            await foreach (var row in v)
+            {
+                row.ScansLeft = 0;
+                batch.Add(new TableTransactionAction(TableTransactionActionType.UpdateMerge, row));
+            }
+        }
+        bool completedOk = false;
+        if (batch.Count > 0) // There are some OCR record updates so make sure all or none succeed
+        {
+            batch.Add(new TableTransactionAction(TableTransactionActionType.Add, purchaseInfo));
+            try
+            {
+                await tableClient.SubmitTransactionAsync(batch);
+                completedOk = true;
+            }
+            catch (Exception)
+            {
+                purchaseInfo.ScansLeft -= totalScansLeft; // because we did not zero all those records
+            }
+        }
+        // Either there were no existing records to update so there's just the one transaction and no need for a batch
+        // or the batch failed.
+        if (!completedOk)
+        {
+            var v = await tableClient.AddEntityAsync(purchaseInfo);
+            completedOk = !v.IsError;
+        }
+        return completedOk;
     }
     public async Task<int> DecrementScansAsync(string orderId)
     {

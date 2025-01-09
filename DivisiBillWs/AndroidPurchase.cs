@@ -27,7 +27,7 @@ public class AndroidPurchase
     public string? ProductId { get; set; }
     public long PurchaseTime { get; set; }
     public int PurchaseState { get; set; }
-    public string? PurchaseToken { get; set; }
+    public required string PurchaseToken { get; set; }
     public string? ObfuscatedAccountId { get; set; }
     public int Quantity { get; set; }
     public bool Acknowledged { get; set; }

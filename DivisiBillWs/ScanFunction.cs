@@ -52,7 +52,7 @@ public class ScanFunction
             orderId = androidPurchase.OrderId;
         if (orderId == null)
             return new BadRequestResult();
-        int scans = await licenseStore.GetScansAsync(orderId);
+        int scans = await licenseStore.GetScansAsync(androidPurchase);
         if (scans < 0)
             return new BadRequestResult();
         else if (scans == 0) // The license is ok but has no associated scans left

@@ -87,7 +87,7 @@ public class RecordPurchaseFunction
                 logger.LogInformation($"In RecordPurchaseFunction, successfully verified {(verifiedAcknowledgementState == 1 ? "acknowledged" : "unacknowledged")} purchase with Google, checking license table");
                 // All is well so far and we have a legitimately issued license
                 // Now ensure it is not already known and if not, remember it for the future
-                bool recorded = await licenseStore.RecordAsync(androidPurchase.ProductId, androidPurchase.OrderId, androidPurchase.Quantity, androidPurchase.ObfuscatedAccountId);
+                bool recorded = await licenseStore.RecordAsync(androidPurchase);
                 return recorded;
             }
         }

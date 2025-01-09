@@ -67,7 +67,7 @@ internal class Authorization
         if (androidPurchase.OrderId == null || androidPurchase.ProductId == null)
             return false;
         // First see if we've heard of it, then see if the store has (because checking our tables is cheaper)
-        int i = await licenseStore.GetScansAsync(androidPurchase.OrderId);
+        int i = await licenseStore.GetScansAsync(androidPurchase);
         if (i >= 0 // we heard of it, even if it has no scans left
               && PlayStore.VerifyPurchase(logger, androidPurchase, isSubscription: androidPurchase.ProductId.EndsWith(".subscription"))) // See if the play store is happy with it
             return true;
@@ -143,14 +143,14 @@ internal class Authorization
             Debug.Assert(androidPurchase.OrderId != null);
             Debug.Assert(androidPurchase.ProductId != null);
 
-            int scans = await licenseStore.GetScansAsync(androidPurchase.OrderId!); // Tells us it is one of ours
+            int scans = await licenseStore.GetScansAsync(androidPurchase!); // Tells us it is one of ours
 
             if (scans == -1)
             {
                 // The license was verified by the Play Store but not known to us; that's no great problem, just store it and try again
                 bool recorded = await RecordPurchaseFunction.RecordAsync(androidPurchase, isSubscription, logger, licenseStore);
                 if (recorded)
-                    scans = await licenseStore.GetScansAsync(androidPurchase.OrderId!);
+                    scans = await licenseStore.GetScansAsync(androidPurchase!);
             }
 
             if (scans >= 0)
