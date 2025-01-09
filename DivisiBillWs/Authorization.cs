@@ -28,12 +28,12 @@ internal class Authorization
     /// The terms 'license' and 'product' are often synonymous, it's called a license in most of the code, but we avoid
     /// using the word license as much as possible in user facing text. 
     /// </summary>
-    /// <param name="req">The incoming request</param>
+    /// <param name="httpRequest">The incoming request</param>
     /// <returns>The userKey for this license if the request passed authorization checks, null otherwise</returns>
-    public async Task<string?> GetAuthorizedUserKeyAsync(HttpRequest req)
+    public async Task<string?> GetAuthorizedUserKeyAsync(HttpRequest httpRequest)
     {
         // Early exit if there is a current token that matches (meaning we do not need to check the androidPurchase)
-        var tokenHeader = req.Headers.FirstOrDefault((x) => x.Key.ToLowerInvariant().Equals(TokenHeaderName));
+        var tokenHeader = httpRequest.Headers.FirstOrDefault((x) => x.Key.ToLowerInvariant().Equals(TokenHeaderName));
         if (tokenHeader.Key != null)
         {
             string? incomingToken = tokenHeader.Value.FirstOrDefault();
@@ -42,7 +42,7 @@ internal class Authorization
                 return userKey;// early exit, a valid token was provided, so no need to recheck the purchase license
         }
         // If we reach here then authorize the hard way, by looking at the license  
-        AndroidPurchase? androidPurchase = ProLicenseFromRequest(logger, req); // Extract a pro license from the header
+        AndroidPurchase? androidPurchase = ProLicenseFromRequest(logger, httpRequest); // Extract a pro license from the header
         return (androidPurchase != null && await GetIsAuthorizedAsync(androidPurchase))
             ? androidPurchase.ObfuscatedAccountId ?? androidPurchase.OrderId! // This is a new pro licensee legitimately issued 
             : null;
@@ -80,14 +80,14 @@ internal class Authorization
     /// Extract the pro license (if any) passed in a request
     /// </summary>
     /// <param name="loggerParam">Standard logging instance</param>
-    /// <param name="req">Incoming HttpRequest - used as a sort of read-only state variable</param>
+    /// <param name="httpRequest">Incoming HttpRequest - used as a sort of read-only state variable</param>
     /// <returns></returns>
-    internal static AndroidPurchase? ProLicenseFromRequest(ILogger loggerParam, HttpRequest req)
+    internal static AndroidPurchase? ProLicenseFromRequest(ILogger loggerParam, HttpRequest httpRequest)
     {
         AndroidPurchase? androidPurchase = null;
 
         // First, we need to get the purchase record
-        var purchaseHeader = req.Headers.FirstOrDefault((x) => x.Key.ToLowerInvariant().Equals(PurchaseHeaderName));
+        var purchaseHeader = httpRequest.Headers.FirstOrDefault((x) => x.Key.ToLowerInvariant().Equals(PurchaseHeaderName));
 
         if (purchaseHeader.Key != null)
         {
@@ -119,16 +119,16 @@ internal class Authorization
     /// 
     /// <para>This is called at least once to verify every license DivisiBill uses.</para>
     /// </summary>
-    /// <param name="req">The incoming HttpRequest object</param>
+    /// <param name="httpRequest">The incoming HttpRequest object</param>
     /// <returns>The number of remaining scans allocated to this license</returns>
     /// <param name="isSubscription">Whether the license being verified is for a subscription or a product</param>
-    internal async Task<IActionResult> GetIsVerifiedAsync(HttpRequest req, bool isSubscription)
+    internal async Task<IActionResult> GetIsVerifiedAsync(HttpRequest httpRequest, bool isSubscription)
     {
         AndroidPurchase? androidPurchase = null;
 
         try
         {
-            androidPurchase = await req.ReadFromJsonAsync<AndroidPurchase>();
+            androidPurchase = await httpRequest.ReadFromJsonAsync<AndroidPurchase>();
         }
         catch (Exception ex)
         {
@@ -162,7 +162,7 @@ internal class Authorization
                     string userkey = androidPurchase.ObfuscatedAccountId ?? androidPurchase.OrderId; // It's a legitimate pro OrderId, verified as one of ours
                     return new OkObjectResult(scans.ToString());
                 }
-                return req.OkResponseWithToken(null, scans.ToString());
+                return httpRequest.OkResponseWithToken(null, scans.ToString());
             }
         }
         return new BadRequestResult();

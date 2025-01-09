@@ -68,14 +68,14 @@ internal class DataStore<T> where T : StorageClass, new()
     private readonly TableClient tableClient;
 
     #region Interface Methods
-    public async Task<IActionResult> PutAsync(HttpRequest req, string userKey, string dataName)
+    public async Task<IActionResult> PutAsync(HttpRequest httpRequest, string userKey, string dataName)
     {
         logger.LogInformation($"In DataStore.PutAsync, upsert data to {tableClient.Name}[{userKey}, {dataName}({dataName.Invert()})]");
 
         if (!dataName.IsValidName())
             return new BadRequestResult();
         // Get the data stream
-        var forms = await req.ReadFormAsync();
+        var forms = await httpRequest.ReadFormAsync();
         if (!forms.TryGetValue("data", out StringValues stringValues) || stringValues.Count != 1)
             return new BadRequestResult();
 
@@ -99,9 +99,9 @@ internal class DataStore<T> where T : StorageClass, new()
         var addEntityResponse = await tableClient.UpsertEntityAsync(data);
         return addEntityResponse.IsError
             ? new BadRequestResult()
-            : req.OkResponseWithToken(licenseStore.GetTokenIfNew(userKey));
+            : httpRequest.OkResponseWithToken(licenseStore.GetTokenIfNew(userKey));
     }
-    public async Task<IActionResult> GetAsync(HttpRequest req, string userKey, string dataName)
+    public async Task<IActionResult> GetAsync(HttpRequest httpRequest, string userKey, string dataName)
     {
         logger.LogInformation($"In DataStore.GetAsync, retrieve data from {tableClient.Name}[{userKey}, {dataName}({dataName.Invert()})]");
         if (!dataName.IsValidName())
@@ -117,7 +117,7 @@ internal class DataStore<T> where T : StorageClass, new()
             logger.LogInformation($"In DataStore.GetAsync, got data, length = {data!.Value!.DataLength}");
             string? token = licenseStore.GetTokenIfNew(userKey);
             logger.LogInformation($"In DataStore.GetAsync, called licenseStore.GetTokenIfNew, returned {(token is null ? "null" : "value")}");
-            return req.OkResponseWithToken(token, data!.Value!.Data);
+            return httpRequest.OkResponseWithToken(token, data!.Value!.Data);
         }
         else
         {
@@ -125,7 +125,7 @@ internal class DataStore<T> where T : StorageClass, new()
             return new BadRequestResult();
         }
     }
-    public async Task<IActionResult> DeleteAsync(HttpRequest req, string userKey, string dataName)
+    public async Task<IActionResult> DeleteAsync(HttpRequest httpRequest, string userKey, string dataName)
     {
         logger.LogInformation($"In DataStore.Delete, delete data at {tableClient.Name}[{userKey}, {dataName}({dataName.Invert()})]");
         if (!dataName.IsValidName())
@@ -134,11 +134,11 @@ internal class DataStore<T> where T : StorageClass, new()
         var deleteResult = await tableClient.DeleteEntityAsync(userKey, dataName.Invert());
         return deleteResult.IsError
             ? new NotFoundResult()
-            : req.OkResponseWithToken(licenseStore.GetTokenIfNew(userKey));
+            : httpRequest.OkResponseWithToken(licenseStore.GetTokenIfNew(userKey));
     }
-    public async Task<IActionResult> EnumerateAsync(HttpRequest req, string userKey)
+    public async Task<IActionResult> EnumerateAsync(HttpRequest httpRequest, string userKey)
     {
-        var parsedQueryString = req.Query;
+        var parsedQueryString = httpRequest.Query;
         string? before = parsedQueryString["before"];
         string? topString = parsedQueryString["top"];
 
@@ -176,7 +176,7 @@ internal class DataStore<T> where T : StorageClass, new()
                     storageClass.UseSummaryField ? item.Summary : null));
                 if (++count >= top) break;
             }
-            return req.OkResponseWithToken(licenseStore.GetTokenIfNew(userKey), JsonSerializer.Serialize(responseList,
+            return httpRequest.OkResponseWithToken(licenseStore.GetTokenIfNew(userKey), JsonSerializer.Serialize(responseList,
                 new JsonSerializerOptions() { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull })
             );
         }

@@ -6,16 +6,16 @@ namespace DivisiBillWs;
 
 internal static class Extensions
 {
-    internal static IActionResult OkResponseWithToken(this HttpRequest req, string? Token = null, string? responseText = null)
+    internal static IActionResult OkResponseWithToken(this HttpRequest httpRequest, string? Token = null, string? responseText = null)
     {
         if (!string.IsNullOrEmpty(Token))
         {
-            req.Headers[Authorization.TokenHeaderName] = Token;
+            httpRequest.Headers[Authorization.TokenHeaderName] = Token;
         }
 
         if (!string.IsNullOrEmpty(responseText))
         {
-            req.Headers["Content-Type"] = responseText.StartsWith("{")
+            httpRequest.Headers["Content-Type"] = responseText.StartsWith("{")
                 ? "application/json; charset=utf-8"
                 : "text/plain; charset=utf-8";
             return new OkObjectResult(responseText);

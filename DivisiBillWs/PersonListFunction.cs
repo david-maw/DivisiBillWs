@@ -23,16 +23,16 @@ public class PersonListFunction
     /// CRUD for a single PersonList. Beware, according to https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference?tabs=blob#parallel-execution
     /// a the function code may be simultaneously executed on multiple threads.
     /// </summary>
-    /// <param name="req">The incoming HTTP request </param>
+    /// <param name="httpRequest">The incoming HTTP request </param>
     /// <param name="id">The name of the item we are addressing</param>
     /// <returns>An HTTP response and possibly the data associated with the named item</returns>
     [Function("PersonListFunction")]
     public async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "get", "put", "delete",
-    Route = "personlist/{id}")] HttpRequest req, string id)
+    Route = "personlist/{id}")] HttpRequest httpRequest, string id)
     {
-        logger.LogInformation($"PersonListFunction HTTP trigger function processing a {req.Method} request for ID {id}");
+        logger.LogInformation($"PersonListFunction HTTP trigger function processing a {httpRequest.Method} request for ID {id}");
 
-        string? userKey = await authorization.GetAuthorizedUserKeyAsync(req);
+        string? userKey = await authorization.GetAuthorizedUserKeyAsync(httpRequest);
         if (userKey == null)
         {
             logger.LogInformation($"MealFunction authorization failed, returning BadRequest");
@@ -40,28 +40,28 @@ public class PersonListFunction
         }
 
         // Authorized, so call the appropriate function
-        Task<IActionResult> actionResult = req.Method switch
+        Task<IActionResult> actionResult = httpRequest.Method switch
         {
-            "PUT" => storage.PutAsync(req, userKey, id),
-            "GET" => storage.GetAsync(req, userKey, id),
-            "DELETE" => storage.DeleteAsync(req, userKey, id),
-            _ => throw new ApplicationException($"Unknown HTTP method '{req.Method}'")
+            "PUT" => storage.PutAsync(httpRequest, userKey, id),
+            "GET" => storage.GetAsync(httpRequest, userKey, id),
+            "DELETE" => storage.DeleteAsync(httpRequest, userKey, id),
+            _ => throw new ApplicationException($"Unknown HTTP method '{httpRequest.Method}'")
         };
 
         return await actionResult;
     }
     [Function("PersonLists")]
-    public async Task<IActionResult> EnumerateAsync([HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequest req)
+    public async Task<IActionResult> EnumerateAsync([HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequest httpRequest)
     {
         logger.LogInformation("PersonLists function processing a request.");
 
-        string? userKey = await authorization.GetAuthorizedUserKeyAsync(req);
+        string? userKey = await authorization.GetAuthorizedUserKeyAsync(httpRequest);
         if (userKey == null)
         {
             logger.LogInformation($"Meals authorization failed, returning error");
             return new BadRequestResult();
         }
         // Now do the actual work
-        return await storage.EnumerateAsync(req, userKey);
+        return await storage.EnumerateAsync(httpRequest, userKey);
     }
 }

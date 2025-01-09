@@ -21,11 +21,11 @@ public class ScanFunction
     /// Beware, according to https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference?tabs=blob#parallel-execution
     /// a the function code may be simultaneously executed on multiple threads.
     [Function("scan")]
-    public async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequest req)
+    public async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequest httpRequest)
     {
         logger.LogInformation("The 'scan' web service function is processing a request.");
 
-        string? userKey = await authorization.GetAuthorizedUserKeyAsync(req);
+        string? userKey = await authorization.GetAuthorizedUserKeyAsync(httpRequest);
         if (userKey == null)
         {
             logger.LogInformation($"scan authorization failed, returning error");
@@ -33,9 +33,9 @@ public class ScanFunction
         }
 
         // The passed data should be a multi-part form containing one file and an OCR license
-        if (!req.HasFormContentType)
+        if (!httpRequest.HasFormContentType)
             return new BadRequestResult();
-        IFormCollection forms = await req.ReadFormAsync();
+        IFormCollection forms = await httpRequest.ReadFormAsync();
         if (!forms.TryGetValue("license", out StringValues licenseValue))
             return new BadRequestResult();
         string ocrLicenseJson = licenseValue.ToString();
@@ -57,9 +57,9 @@ public class ScanFunction
             return new BadRequestResult();
         else if (scans == 0) // The license is ok but has no associated scans left
             return new NoContentResult();
-        Stream stream = req.Form.Files[0].OpenReadStream();
+        Stream stream = httpRequest.Form.Files[0].OpenReadStream();
         // Get the options passed in the query string
-        var query = req.Query;
+        var query = httpRequest.Query;
         string option = query["option"].ToString() ?? "";
         if (string.IsNullOrWhiteSpace(option))
             logger.LogInformation("In 'scan', option is null");
