@@ -1,7 +1,4 @@
-﻿using Azure.Data.Tables;
-using Azure;
-using Microsoft.Extensions.Logging;
-using Google.Apis.AndroidPublisher.v3.Data;
+﻿using Google.Apis.AndroidPublisher.v3.Data;
 
 namespace DivisiBillWs;
 internal class PlayStore
@@ -61,7 +58,7 @@ internal class PlayStore
                     {
                         verifiedSubscriptionPurchase = LicenseCheck.GetSubscriptionPurchase(
                             androidPurchase.PackageName, androidPurchase.ProductId, androidPurchase.PurchaseToken);
-                        if (verifiedSubscriptionPurchase != null) 
+                        if (verifiedSubscriptionPurchase != null)
                         {
                             verifiedOrderId = verifiedSubscriptionPurchase.OrderId;
                             verifiedAcknowledgementState = verifiedSubscriptionPurchase.AcknowledgementState;

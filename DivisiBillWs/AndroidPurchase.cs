@@ -1,16 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Text.Json;
-using System.Threading.Tasks;
+﻿using System.Text.Json;
 
 namespace DivisiBillWs;
 
 public class AndroidPurchase
 {
     public AndroidPurchase() { }
-    public static AndroidPurchase? FromJson(string androidPurchaseJson) 
+    public static AndroidPurchase? FromJson(string androidPurchaseJson)
     {
         return JsonSerializer.Deserialize<AndroidPurchase>(androidPurchaseJson,
                         new JsonSerializerOptions() { PropertyNameCaseInsensitive = true });
@@ -20,7 +15,7 @@ public class AndroidPurchase
         return await JsonSerializer.DeserializeAsync<AndroidPurchase>(androidPurchaseJson,
                         new JsonSerializerOptions() { PropertyNameCaseInsensitive = true });
     }
-    public bool GetIsLicenseFor(string productId) => 
+    public bool GetIsLicenseFor(string productId) =>
         !string.IsNullOrWhiteSpace(OrderId)
         && !string.IsNullOrWhiteSpace(PackageName)
         && !string.IsNullOrWhiteSpace(ProductId)

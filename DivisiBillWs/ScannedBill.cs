@@ -1,7 +1,7 @@
 ﻿using System.Globalization;
 using System.Text;
-using System.Xml.Serialization;
 using System.Xml;
+using System.Xml.Serialization;
 
 namespace DivisiBillWs;
 
@@ -16,34 +16,30 @@ public class ScannedBill
     /// Number of scans remaining on the license used
     /// </summary>
     public int ScansLeft { get; set; }
-    public List<OrderLine> OrderLines { get; set; } = new List<OrderLine>();
+    public List<OrderLine> OrderLines { get; set; } = [];
 
-    public List<FormElement> FormElements { get; set; } = new List<FormElement>();
+    public List<FormElement> FormElements { get; set; } = [];
     #endregion
 
     #region Serialization 
     /// <summary>
     /// Handle serialization and deserialization of scan results so debugging need not require round trips to Google Textract
     /// </summary>
-    private static XmlSerializer itemsSerializer = new XmlSerializer(typeof(ScannedBill));
+    private static readonly XmlSerializer itemsSerializer = new(typeof(ScannedBill));
 
     private void Serialize(Stream s)
     {
-        using (StreamWriter sw = new StreamWriter(s, Encoding.UTF8, 512, true))
-        using (var xmlwriter = XmlWriter.Create(sw, new XmlWriterSettings() { Indent = true, OmitXmlDeclaration = true, NewLineOnAttributes = true }))
-        {
-            var namespaces = new XmlSerializerNamespaces();
-            namespaces.Add(string.Empty, string.Empty);
-            itemsSerializer.Serialize(xmlwriter, this, namespaces);
-        }
+        using StreamWriter sw = new(s, Encoding.UTF8, 512, true);
+        using var xmlwriter = XmlWriter.Create(sw, new XmlWriterSettings() { Indent = true, OmitXmlDeclaration = true, NewLineOnAttributes = true });
+        var namespaces = new XmlSerializerNamespaces();
+        namespaces.Add(string.Empty, string.Empty);
+        itemsSerializer.Serialize(xmlwriter, this, namespaces);
     }
     private static ScannedBill Deserialize(Stream s)
     {
-        using (StreamReader sr = new StreamReader(s, Encoding.UTF8, true, 512, true))
-        using (var xmlreader = XmlReader.Create(sr))
-        {
-            return (ScannedBill)itemsSerializer.Deserialize(xmlreader)!;
-        }
+        using StreamReader sr = new(s, Encoding.UTF8, true, 512, true);
+        using var xmlreader = XmlReader.Create(sr);
+        return (ScannedBill)itemsSerializer.Deserialize(xmlreader)!;
     }
     #endregion
 }
@@ -126,10 +122,10 @@ public class OrderLine
             leadingText = currencyText;
         else if (startInx >= 0)
         {
-            leadingText = currencyText.Substring(0, startInx + 1).Trim();
+            leadingText = currencyText[..(startInx + 1)].Trim();
             if (leadingText.EndsWith(nfi.CurrencySymbol)) // discard any trailing currency symbol
             {
-                leadingText = leadingText.Substring(0, leadingText.Length - nfi.CurrencySymbol.Length).TrimEnd();
+                leadingText = leadingText[..^nfi.CurrencySymbol.Length].TrimEnd();
             }
         }
         else

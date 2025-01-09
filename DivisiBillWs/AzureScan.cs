@@ -6,40 +6,28 @@ namespace DivisiBillWs;
 
 internal static class AzureScan
 {
-    private static string GetString(this DocumentField field)
+    private static string GetString(this DocumentField field) => field.FieldType switch
     {
-        switch (field.FieldType)
-        {
-            case DocumentFieldType.String:
-                return field.Value.AsString();
-            case DocumentFieldType.Date:
-                return field.Value.AsDate().ToString("d");
-            case DocumentFieldType.Time:
-                return field.Value.AsTime().ToString();
-            case DocumentFieldType.PhoneNumber:
-                return field.Value.AsPhoneNumber().ToString();
-            case DocumentFieldType.Double:
-                return field.Value.AsDouble().ToString();
-            case DocumentFieldType.Int64:
-                return field.Value.AsInt64().ToString();
-            case DocumentFieldType.CountryRegion:
-                return field.Value.AsCountryRegion();
-            case DocumentFieldType.Currency:
-                return field.Value.AsCurrency().ToString()!;
-            default:
-                return String.Empty;
-        }
-    }
+        DocumentFieldType.String => field.Value.AsString(),
+        DocumentFieldType.Date => field.Value.AsDate().ToString("d"),
+        DocumentFieldType.Time => field.Value.AsTime().ToString(),
+        DocumentFieldType.PhoneNumber => field.Value.AsPhoneNumber().ToString(),
+        DocumentFieldType.Double => field.Value.AsDouble().ToString(),
+        DocumentFieldType.Int64 => field.Value.AsInt64().ToString(),
+        DocumentFieldType.CountryRegion => field.Value.AsCountryRegion(),
+        DocumentFieldType.Currency => field.Value.AsCurrency().ToString()!,
+        _ => string.Empty,
+    };
     internal static async Task<ScannedBill> CallScanStreamAsync(Stream s)
     {
         if (string.IsNullOrEmpty(Generated.BuildInfo.DivisiBillCognitiveServicesEndpoint))
             throw new InvalidOperationException("Error in web service, no cognitive service endpoint value found, is DIVISIBILL_WS_COGNITIVE_SERVICES_EP set?");
         if (string.IsNullOrEmpty(Generated.BuildInfo.DivisiBillCognitiveServicesKey))
             throw new InvalidOperationException("Error in web service, no cognitive service key value found, is DIVISIBILL_WS_COGNITIVE_SERVICES_KEY set?");
-        AzureKeyCredential credential = new AzureKeyCredential(Generated.BuildInfo.DivisiBillCognitiveServicesKey);
+        AzureKeyCredential credential = new(Generated.BuildInfo.DivisiBillCognitiveServicesKey);
         var client = new DocumentAnalysisClient(new Uri(Generated.BuildInfo.DivisiBillCognitiveServicesEndpoint), credential);
 
-        ScannedBill sb = new ScannedBill();
+        ScannedBill sb = new();
         AnalyzeDocumentOperation operation;
 
         using MemoryStream ms = new();
