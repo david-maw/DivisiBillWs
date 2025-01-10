@@ -160,9 +160,10 @@ internal class Authorization
                 if (androidPurchase.ProductId.Equals(LicenseStore.ProSubscriptionId) || androidPurchase.ProductId.Equals(LicenseStore.ProSubscriptionIdOld))
                 {
                     string userkey = androidPurchase.ObfuscatedAccountId ?? androidPurchase.OrderId; // It's a legitimate pro OrderId, verified as one of ours
+                    httpRequest.IncludeTokenIfSet(licenseStore.GetTokenIfNew(userkey));
                     return new OkObjectResult(scans.ToString());
                 }
-                return httpRequest.OkResponseWithToken(null, scans.ToString());
+                return new OkObjectResult(scans.ToString());
             }
         }
         return new BadRequestResult();

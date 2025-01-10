@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace DivisiBillWs;
 
@@ -97,9 +96,10 @@ internal class DataStore<T> where T : StorageClass, new()
             data.Summary = summaryData;
         }
         var addEntityResponse = await tableClient.UpsertEntityAsync(data);
-        return addEntityResponse.IsError
-            ? new BadRequestResult()
-            : httpRequest.OkResponseWithToken(licenseStore.GetTokenIfNew(userKey));
+        if (addEntityResponse.IsError)
+            return new BadRequestResult();
+        httpRequest.IncludeTokenIfSet(licenseStore.GetTokenIfNew(userKey));
+        return new OkResult();
     }
     public async Task<IActionResult> GetAsync(HttpRequest httpRequest, string userKey, string dataName)
     {
@@ -117,7 +117,8 @@ internal class DataStore<T> where T : StorageClass, new()
             logger.LogInformation($"In DataStore.GetAsync, got data, length = {data!.Value!.DataLength}");
             string? token = licenseStore.GetTokenIfNew(userKey);
             logger.LogInformation($"In DataStore.GetAsync, called licenseStore.GetTokenIfNew, returned {(token is null ? "null" : "value")}");
-            return httpRequest.OkResponseWithToken(token, data!.Value!.Data);
+            httpRequest.IncludeTokenIfSet(token);
+            return new OkObjectResult(data!.Value!.Data);
         }
         else
         {
@@ -132,9 +133,10 @@ internal class DataStore<T> where T : StorageClass, new()
             return new BadRequestResult();
         // Delete Entry
         var deleteResult = await tableClient.DeleteEntityAsync(userKey, dataName.Invert());
+        httpRequest.IncludeTokenIfSet(licenseStore.GetTokenIfNew(userKey));
         return deleteResult.IsError
             ? new NotFoundResult()
-            : httpRequest.OkResponseWithToken(licenseStore.GetTokenIfNew(userKey));
+            : new OkResult();
     }
     public async Task<IActionResult> EnumerateAsync(HttpRequest httpRequest, string userKey)
     {
@@ -176,9 +178,13 @@ internal class DataStore<T> where T : StorageClass, new()
                     storageClass.UseSummaryField ? item.Summary : null));
                 if (++count >= top) break;
             }
-            return httpRequest.OkResponseWithToken(licenseStore.GetTokenIfNew(userKey), JsonSerializer.Serialize(responseList,
-                new JsonSerializerOptions() { WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull })
-            );
+            httpRequest.IncludeTokenIfSet(licenseStore.GetTokenIfNew(userKey));
+            return new JsonResult(responseList, new JsonSerializerOptions()
+            {
+                PropertyNamingPolicy = null,
+                WriteIndented = true,
+                DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+            });
         }
     }
     #endregion

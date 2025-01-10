@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
+using System.Text.Json;
 
 namespace DivisiBillWs;
 
@@ -83,7 +84,12 @@ public class ScanFunction
                     {
                         ScannedBill sb = option == "0" ? await AzureScan.CallScanStreamAsync(stream) : fakeScannedBill;
                         sb.ScansLeft = await licenseStore.DecrementScansAsync(orderId);
-                        return new JsonResult(sb, new System.Text.Json.JsonSerializerOptions() { DictionaryKeyPolicy = null });
+                        return new JsonResult(sb, new JsonSerializerOptions()
+                        {
+                            PropertyNamingPolicy = null,
+                            WriteIndented = true,
+                            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+                        });
                     }
                     catch (InvalidOperationException ex)
                     {

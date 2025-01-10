@@ -1,27 +1,18 @@
 ﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
 using System.Text;
 
 namespace DivisiBillWs;
 
 internal static class Extensions
 {
-    internal static IActionResult OkResponseWithToken(this HttpRequest httpRequest, string? Token = null, string? responseText = null)
+    internal static void IncludeTokenIfSet(this HttpRequest httpRequest, string? Token)
     {
         if (!string.IsNullOrEmpty(Token))
         {
             httpRequest.Headers[Authorization.TokenHeaderName] = Token;
         }
-
-        if (!string.IsNullOrEmpty(responseText))
-        {
-            httpRequest.Headers["Content-Type"] = responseText.StartsWith("{")
-                ? "application/json; charset=utf-8"
-                : "text/plain; charset=utf-8";
-            return new OkObjectResult(responseText);
-        }
-        return new OkResult();
     }
+
     /// <summary>
     /// Complement strings of decimal digits, for example "12345" => "98765"
     /// </summary>
@@ -37,6 +28,7 @@ internal static class Extensions
         }
         return new string(chars);
     }
+
     /// <summary>
     /// Validates that a string is a 14 digit integer name intended to store yyyymmddhhmmss 
     /// however the only constant on the number is that yyyy be <= 3000
