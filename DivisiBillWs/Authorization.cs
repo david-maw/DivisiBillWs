@@ -19,9 +19,9 @@ internal class Authorization
 
     /// <summary>
     /// Gets an authorized user key, called from functions requiring authorization. Authorization comes in 3 forms:
-    /// 1) A header containing a license response from some license server (initially the Android play store)
+    /// 1) A header containing a pro license response from some license server (initially the Android play store)
     /// 2) A token indicating that a license response was validated earlier
-    /// 3) A license embedded in a multi-part HTTP request
+    /// 3) An OCR license embedded in a multi-part HTTP request for the Scan function.
     /// This always comes after a call to GetIsVerified (below) for the Pro license and the only license used
     /// for verification is a Pro one (in fact it's used when verifying other license types - just OCR today).
     /// 
@@ -49,16 +49,16 @@ internal class Authorization
     }
     /// <summary>
     /// Evaluate whether an alleged license passed as authorization with a request to do something is known by us and by the 
-    /// app store, called indirectly via <see cref="GetAuthorizedUserKeyAsync"/> from 
-    /// functions requiring authorization of an AndroidPurchase object before they'll do work (which is most functions).
-    /// <see cref="ScanFunction"/> calls it directly, mostly for historical reasons.
+    /// app store, called indirectly via <see cref="GetAuthorizedUserKeyAsync"/> from functions requiring
+    /// authorization of an AndroidPurchase object representing a pro license before they'll do work (which is most functions).
+    /// <see cref="ScanFunction"/> calls it directly for an OCR license, mostly for historical reasons.
     ///
     /// There's an explicit license validation call <see cref="GetIsVerifiedAsync"/> which is used to authenticate a license and
-    /// store it away so it can be used in other calls where it will be validated by this function.
+    /// store it away if it's a pro license so it can be used in other calls where it will be validated by this function.
     /// 
     /// The terms 'license' and 'product' are often synonymous, it's called a license in most of the code, but we avoid
     /// using the word license as much as possible in user facing text where we often need to distinguish a one-time purchase 
-    /// of OCR scand from the expiring Pro subscription.
+    /// of OCR scans from the expiring Pro subscription.
     /// </summary>
     /// <param name="androidPurchase">The incoming object to be verified</param>
     /// <returns>True if the request passed authorization checks</returns>
@@ -72,12 +72,12 @@ internal class Authorization
               && PlayStore.VerifyPurchase(logger, androidPurchase, isSubscription: androidPurchase.ProductId.EndsWith(".subscription"))) // See if the play store is happy with it
             return true;
         else
-            logger.LogError("In GetUserKey, error licenseStore.GetScans returned " + i);
+            logger.LogError("In GetIsAuthorizedAsync, error licenseStore.GetScans returned " + i);
         return false;
     }
 
     /// <summary>
-    /// Extract the pro license (if any) passed in a request
+    /// Extract the pro license (if any) passed in a request (in its own header called <see cref="PurchaseHeaderName"/>)
     /// </summary>
     /// <param name="loggerParam">Standard logging instance</param>
     /// <param name="httpRequest">Incoming HttpRequest - used as a sort of read-only state variable</param>
@@ -86,7 +86,7 @@ internal class Authorization
     {
         AndroidPurchase? androidPurchase = null;
 
-        // First, we need to get the purchase record
+        // First, we need to get the purchase record from the license header
         var purchaseHeader = httpRequest.Headers.FirstOrDefault((x) => x.Key.ToLowerInvariant().Equals(PurchaseHeaderName));
 
         if (purchaseHeader.Key != null)
@@ -107,21 +107,22 @@ internal class Authorization
         }
         return androidPurchase != null
             && (androidPurchase.GetIsLicenseFor(LicenseStore.ProSubscriptionId)
-               || androidPurchase.GetIsLicenseFor(LicenseStore.ProSubscriptionIdOld)) // Temporary down level support
+               || androidPurchase.GetIsLicenseFor(LicenseStore.ProSubscriptionIdOld)) // Support license testers by not requiring them to keep renewing subscriptions
             ? androidPurchase : null;
     }
     /// <summary>
     /// <para>Called by the verify function to validate a license issued by an app store. The license is passed as the request body.
     /// Assuming it passes verification then if the license is a pro license it is going to be passed in a header to be used 
-    /// for future authentication <see cref="GetIsAuthorizedAsync"/> so it is stored there. Other license types are just validated.</para> 
+    /// for future authentication <see cref="GetIsAuthorizedAsync"/> so it is stored there. Other license types (like OCR licenses) are just validated.</para> 
     /// 
-    /// <para>The last use time of the license is updated whenever this function is called by calling <see cref="LicenseStore.UpdateTimeUsedAsync"/></para> 
+    /// <para>The last use time of the license is updated whenever this function is called by calling <see cref="LicenseStore.UpdateTimeUsedAsync"/>.
+    /// This update is done for administrative convenience, so old "stale" licenses are more easily detected./></para> 
     /// 
     /// <para>This is called at least once to verify every license DivisiBill uses.</para>
     /// </summary>
     /// <param name="httpRequest">The incoming HttpRequest object</param>
-    /// <returns>The number of remaining scans allocated to this license</returns>
     /// <param name="isSubscription">Whether the license being verified is for a subscription or a product</param>
+    /// <returns>The number of remaining scans allocated to this license</returns>
     internal async Task<IActionResult> GetIsVerifiedAsync(HttpRequest httpRequest, bool isSubscription)
     {
         AndroidPurchase? androidPurchase = null;
