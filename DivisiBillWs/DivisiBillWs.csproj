@@ -38,6 +38,21 @@
     <Using Include="System.Threading.ExecutionContext" Alias="ExecutionContext" />
   </ItemGroup>
 
+  <!-- Sentry Setup -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(DIVISIBILL_SENTRY_DSN)' != ''">
+
+    <!-- Configure Sentry org and project -->
+    <SentryOrg>autoplus</SentryOrg>
+    <SentryProject>divisibillws</SentryProject>
+
+    <!-- Sends symbols to Sentry, enabling symbolification of stack traces. -->
+    <SentryUploadSymbols>true</SentryUploadSymbols>
+
+    <!-- Sends sources to Sentry, enabling display of source context. -->
+    <SentryUploadSources>true</SentryUploadSources>
+
+  </PropertyGroup>
+
   <!--
   Generate the file holding the build secrets on every build
   First get the secrets from environment variables
