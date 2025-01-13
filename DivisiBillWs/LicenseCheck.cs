@@ -28,7 +28,7 @@ internal static class LicenseCheck
 
         return credential;
     }
-    public static SubscriptionPurchase? GetSubscriptionPurchase(string packageName, string productId, string token)
+    public static SubscriptionPurchaseV2? GetSubscriptionPurchase(string packageName, string productId, string token)
     {
         ServiceAccountCredential? serviceAccountCredential = GetServiceAccountCredential();
 
@@ -42,7 +42,7 @@ internal static class LicenseCheck
                 HttpClientInitializer = serviceAccountCredential,
                 ApplicationName = "DivisiBillWs",
             });
-            return service.Purchases.Subscriptions.Get(packageName, productId, token).Execute();
+            return service.Purchases.Subscriptionsv2.Get(packageName, token).Execute();
         }
     }
     public static ProductPurchase? GetProductPurchase(string packageName, string productId, string token)

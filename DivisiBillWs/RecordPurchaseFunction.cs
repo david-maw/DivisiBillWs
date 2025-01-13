@@ -46,7 +46,7 @@ public class RecordPurchaseFunction
             int? verifiedAcknowledgementState = null;
             if (isSubscription)
             {
-                Google.Apis.AndroidPublisher.v3.Data.SubscriptionPurchase? verifiedPurchase = null;
+                Google.Apis.AndroidPublisher.v3.Data.SubscriptionPurchaseV2? verifiedPurchase = null;
                 try
                 {
                     verifiedPurchase = LicenseCheck.GetSubscriptionPurchase(
@@ -54,7 +54,7 @@ public class RecordPurchaseFunction
                     if (verifiedPurchase != null)
                     {
                         verifiedWithStore = true;
-                        verifiedAcknowledgementState = verifiedPurchase.AcknowledgementState;
+                        verifiedAcknowledgementState = verifiedPurchase.AcknowledgementState.Equals("ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED") ? 1 : 0;
                     }
                 }
                 catch (Exception ex)

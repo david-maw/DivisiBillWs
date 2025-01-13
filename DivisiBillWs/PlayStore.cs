@@ -36,6 +36,7 @@ internal class PlayStore
                     """);
             string? verifiedOrderId = null;
             int? verifiedAcknowledgementState = null;
+            string subscriptionState = string.Empty;
 
 #if DEBUG // permit a test orderid
             if (androidPurchase.OrderId != null && androidPurchase.OrderId.Equals("Fake-OrderId"))
@@ -43,15 +44,15 @@ internal class PlayStore
 #endif
             if (isSubscription)
             {
-                SubscriptionPurchase? verifiedSubscriptionPurchase = null;
+                SubscriptionPurchaseV2? verifiedSubscriptionPurchase = null;
                 try
                 {
                     if (isPermittedTestOrderId)
                     {
                         verifiedSubscriptionPurchase = new()
                         {
-                            OrderId = androidPurchase.OrderId,
-                            AcknowledgementState = 1
+                            LatestOrderId = androidPurchase.OrderId,
+                            AcknowledgementState = "ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED"
                         };
                     }
                     else
@@ -60,8 +61,9 @@ internal class PlayStore
                             androidPurchase.PackageName, androidPurchase.ProductId, androidPurchase.PurchaseToken);
                         if (verifiedSubscriptionPurchase != null)
                         {
-                            verifiedOrderId = verifiedSubscriptionPurchase.OrderId;
-                            verifiedAcknowledgementState = verifiedSubscriptionPurchase.AcknowledgementState;
+                            verifiedOrderId = verifiedSubscriptionPurchase.LatestOrderId;
+                            verifiedAcknowledgementState = verifiedSubscriptionPurchase.AcknowledgementState.Equals("ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED") ? 1 : 0;
+                            subscriptionState = verifiedSubscriptionPurchase.SubscriptionState;
                         }
                     }
                 }
@@ -111,9 +113,23 @@ internal class PlayStore
                     logger.LogInformation("In VerifyPurchase, faking test order, not checking license table");
                     return true;
                 }
+                else if (isSubscription)
+                {
+                    // Must be currently active
+                    if (subscriptionState is "SUBSCRIPTION_STATE_ACTIVE" or "SUBSCRIPTION_STATE_IN_GRACE_PERIOD")
+                    {
+                        logger.LogInformation($"In VerifyPurchase, successfully verified {(verifiedAcknowledgementState == 1 ? "acknowledged" : "unacknowledged")} license with Google");
+                        return true;
+                    }
+                    else
+                    {
+                        logger.LogError($"In VerifyPurchase, subscription verification failed because SubscriptionState = '{subscriptionState}'");
+                        return false;
+                    }
+                }
                 else
                 {
-                    logger.LogInformation($"In VerifyPurchase, successfully verified {(verifiedAcknowledgementState == 1 ? "acknowledged" : "unacknowledged")} purchase with Google");
+                    logger.LogInformation($"In VerifyPurchase, successfully verified {(verifiedAcknowledgementState == 1 ? "acknowledged" : "unacknowledged")} license with Google");
                     return true;
                 }
             }
