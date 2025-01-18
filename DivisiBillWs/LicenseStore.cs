@@ -251,6 +251,7 @@ internal class LicenseStore
             ProductId = androidPurchase.ProductId,
             ObfuscatedAccountId = androidPurchase.ObfuscatedAccountId ?? string.Empty,
             PurchaseToken = androidPurchase.PurchaseToken,
+            TimeUsed = DateTime.UtcNow,
             TimeCreated = DateTime.UtcNow,
         };
         int totalScansLeft = 0;
