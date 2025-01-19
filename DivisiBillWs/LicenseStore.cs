@@ -201,6 +201,7 @@ internal class LicenseStore
                     return -2;
                 }
                 purchaseInfo.PurchaseToken = androidPurchase.PurchaseToken;
+                purchaseInfo.TimeUsed = DateTime.UtcNow;
                 await tableClient.UpdateEntityAsync(purchaseInfo, purchaseInfo.ETag);
             }
             logger.LogInformation($"In LicenseStore.GetScans, {tableClient.Name}[{PartitionKeyName}, {androidPurchase.OrderId}] has value, returning " + purchaseInfo.ScansLeft);
