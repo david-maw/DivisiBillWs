@@ -64,7 +64,7 @@ internal class Authorization
     /// <returns>True if the request passed authorization checks</returns>
     public async Task<bool> GetIsAuthorizedAsync(AndroidPurchase androidPurchase)
     {
-        if (androidPurchase.OrderId == null || androidPurchase.ProductId == null)
+        if (androidPurchase.OrderId == null || androidPurchase.ProductId == null || androidPurchase.PurchaseToken == null)
             return false;
         // First see if we've heard of it, then see if the store has (because checking our tables is cheaper)
         int i = await licenseStore.GetScansAsync(androidPurchase);

@@ -175,9 +175,10 @@ internal class LicenseStore
         return null;
     }
     /// <summary>
-    /// Validate a license by making sure it is known (by its ProOrderId). 
+    /// Validate a license by making sure it is known (by its ProOrderId and PurchaseToken). If the stored license has no PurchaseToken
+    /// then give it the one from the test license as long as that PurchaseToken is not already in use somewhere else.
     /// </summary>
-    /// <param name="OrderId">The unique key that distinguishes license instances</param>
+    /// <param name="androidPurchase">The purchase object representing the license</param>
     /// <returns>The number of scans remaining for this license or -1 if the license was not found</returns>
     public async Task<int> GetScansAsync(AndroidPurchase androidPurchase)
     {
@@ -193,11 +194,11 @@ internal class LicenseStore
         {
             if (string.IsNullOrEmpty(purchaseInfo.PurchaseToken))
             {
-                // We have not yet recorded a PurchaseToken for this purchase, make sure it is unique and record it
-                bool alreadyInUse = tableClient.QueryAsync<PurchaseInfo>(r => r.PurchaseToken.Equals(androidPurchase.PurchaseToken)).ToBlockingEnumerable().Any();
-                if (alreadyInUse)
+                // The purchase exists but we have not yet recorded a PurchaseToken for it (probably it is old), make sure the PurchaseToken is unique and record it
+                var existingPurchase = tableClient.QueryAsync<PurchaseInfo>(r => r.PurchaseToken.Equals(androidPurchase.PurchaseToken)).ToBlockingEnumerable().FirstOrDefault();
+                if (existingPurchase is not null)
                 {
-                    logger.LogError($"In LicenseStore.GetScans, PurchaseToken {androidPurchase.PurchaseToken}] already in use found, returning error");
+                    logger.LogError($"In LicenseStore.GetScans, license {existingPurchase.PartitionKey} is already using PurchaseToken {androidPurchase.PurchaseToken}, returning error");
                     return -2;
                 }
                 purchaseInfo.PurchaseToken = androidPurchase.PurchaseToken;
@@ -209,7 +210,7 @@ internal class LicenseStore
         }
         else
         {
-            logger.LogError($"In LicenseStore.GetScans, {tableClient.Name}[{PartitionKeyName}, {androidPurchase.OrderId}] not found, returning error");
+            logger.LogInformation($"In LicenseStore.GetScans, {tableClient.Name}[{PartitionKeyName}, {androidPurchase.OrderId}] not found, returning error");
             return -1;
         }
     }
