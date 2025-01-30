@@ -138,11 +138,13 @@ internal class DataStore<T> where T : StorageClass, new()
             ? new NotFoundResult()
             : new OkResult();
     }
-    public async Task<IActionResult> EnumerateAsync(HttpRequest httpRequest, string userKey)
+    public async Task<IActionResult> EnumerateAsync(HttpRequest httpRequest)
     {
         var parsedQueryString = httpRequest.Query;
         string? before = parsedQueryString["before"];
         string? topString = parsedQueryString["top"];
+
+        string? userKey = httpRequest.HttpContext.Items["userKey"] as string;
 
         // Validate 'before'
         if (before != null && !before.IsValidName())

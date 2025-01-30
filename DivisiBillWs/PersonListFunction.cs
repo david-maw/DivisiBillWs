@@ -31,15 +31,8 @@ public class PersonListFunction
     Route = "personlist/{id}")] HttpRequest httpRequest, string id)
     {
         logger.LogInformation($"PersonListFunction HTTP trigger function processing a {httpRequest.Method} request for ID {id}");
-
-        string? userKey = await authorization.GetAuthorizedUserKeyAsync(httpRequest);
-        if (userKey == null)
-        {
-            logger.LogInformation($"MealFunction authorization failed, returning BadRequest");
-            return new BadRequestResult();
-        }
-
-        // Authorized, so call the appropriate function
+        string? userKey = httpRequest.HttpContext.Items["userKey"] as string;
+        // Already authorized, so call the appropriate function
         Task<IActionResult> actionResult = httpRequest.Method switch
         {
             "PUT" => storage.PutAsync(httpRequest, userKey, id),
@@ -54,14 +47,7 @@ public class PersonListFunction
     public async Task<IActionResult> EnumerateAsync([HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequest httpRequest)
     {
         logger.LogInformation("PersonLists function processing a request.");
-
-        string? userKey = await authorization.GetAuthorizedUserKeyAsync(httpRequest);
-        if (userKey == null)
-        {
-            logger.LogInformation($"Meals authorization failed, returning error");
-            return new BadRequestResult();
-        }
         // Now do the actual work
-        return await storage.EnumerateAsync(httpRequest, userKey);
+        return await storage.EnumerateAsync(httpRequest);
     }
 }

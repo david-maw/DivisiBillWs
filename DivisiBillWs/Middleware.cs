@@ -91,6 +91,10 @@ public class AuthenticationMiddleware : HttpTriggerMiddlewareBase
                 httpContext.Response.StatusCode = (int)HttpStatusCode.BadRequest;
                 return;
             }
+            else
+            {
+                httpContext.Items["userKey"] = userKey;
+            }
         }
         await next(context);
     }

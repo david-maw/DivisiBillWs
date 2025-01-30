@@ -26,13 +26,6 @@ public class ScanFunction
     {
         logger.LogInformation("The 'scan' web service function is processing a request.");
 
-        string? userKey = await authorization.GetAuthorizedUserKeyAsync(httpRequest);
-        if (userKey == null)
-        {
-            logger.LogInformation($"scan authorization failed, returning error");
-            return new BadRequestResult();
-        }
-
         // The passed data should be a multi-part form containing one file and an OCR license
         if (!httpRequest.HasFormContentType)
             return new BadRequestResult();
@@ -43,7 +36,6 @@ public class ScanFunction
         AndroidPurchase? androidPurchase = AndroidPurchase.FromJson(ocrLicenseJson);
         if (forms.Files.Count != 1)
             return new BadRequestResult();
-
 
         // At this point we have all the data, so we can do authorization
         string? orderId = null;
