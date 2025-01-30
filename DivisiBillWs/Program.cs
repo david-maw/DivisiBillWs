@@ -1,10 +1,12 @@
+using DivisiBillWs;
 using Microsoft.Extensions.Hosting;
 using Sentry.Azure.Functions.Worker;
 
 var host = new HostBuilder()
     .ConfigureFunctionsWebApplication((host, builder) =>
     {
-            builder.UseSentry(host, options =>
+        builder.UseMiddleware<CustomExceptionHandler>();
+        builder.UseSentry(host, options =>
             {
                 options.Dsn = DivisiBillWs.Generated.BuildInfo.DivisiBillSentryDsn;
                 options.EnableTracing = false;

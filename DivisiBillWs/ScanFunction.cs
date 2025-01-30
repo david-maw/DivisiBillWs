@@ -67,50 +67,42 @@ public class ScanFunction
         else
             logger.LogInformation("In 'scan', option = " + option);
         // Now do the actual scanning, or fake it
-        try
+        switch (option)
         {
-            switch (option)
-            {
-                case "":
-                case "0": // The normal, production case
-                case "2": // Test returning a fake bill
-                    if (string.IsNullOrEmpty(Generated.BuildInfo.DivisiBillCognitiveServicesEndpoint))
-                        return new UnprocessableEntityObjectResult(
-                            "Error in web service, no cognitive service endpoint value found, is DIVISIBILL_WS_COGNITIVE_SERVICES_EP set?");
-                    if (string.IsNullOrEmpty(Generated.BuildInfo.DivisiBillCognitiveServicesKey))
-                        return new UnprocessableEntityObjectResult(
-                            "Error in web service, no cognitive service key value found, is DIVISIBILL_WS_COGNITIVE_SERVICES_KEY set?");
-                    try
+            case "":
+            case "0": // The normal, production case
+            case "2": // Test returning a fake bill
+                if (string.IsNullOrEmpty(Generated.BuildInfo.DivisiBillCognitiveServicesEndpoint))
+                    return new UnprocessableEntityObjectResult(
+                        "Error in web service, no cognitive service endpoint value found, is DIVISIBILL_WS_COGNITIVE_SERVICES_EP set?");
+                if (string.IsNullOrEmpty(Generated.BuildInfo.DivisiBillCognitiveServicesKey))
+                    return new UnprocessableEntityObjectResult(
+                        "Error in web service, no cognitive service key value found, is DIVISIBILL_WS_COGNITIVE_SERVICES_KEY set?");
+                try
+                {
+                    ScannedBill sb = option == "0" ? await AzureScan.CallScanStreamAsync(stream) : fakeScannedBill;
+                    sb.ScansLeft = await licenseStore.DecrementScansAsync(orderId);
+                    return new JsonResult(sb, new JsonSerializerOptions()
                     {
-                        ScannedBill sb = option == "0" ? await AzureScan.CallScanStreamAsync(stream) : fakeScannedBill;
-                        sb.ScansLeft = await licenseStore.DecrementScansAsync(orderId);
-                        return new JsonResult(sb, new JsonSerializerOptions()
-                        {
-                            PropertyNamingPolicy = null,
-                            WriteIndented = true,
-                            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-                        });
-                    }
-                    catch (InvalidOperationException ex)
-                    {
-                        return new UnprocessableEntityObjectResult(ex.Message);
-                    }
-                case "1": // Test returning an error
-                    return new BadRequestObjectResult($"""
+                        PropertyNamingPolicy = null,
+                        WriteIndented = true,
+                        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+                    });
+                }
+                catch (InvalidOperationException ex)
+                {
+                    return new UnprocessableEntityObjectResult(ex.Message);
+                }
+            case "1": // Test returning an error
+                return new BadRequestObjectResult($"""
                     Content: license
                     orderId={orderId}
                     Length = {stream.Length}
                     """);
-                case "3": // Test fault behavior
-                    throw new Exception("Test exception from Scan");
-                default: // No idea what to do, so do nothing
-                    return new BadRequestResult();
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Exception in scan function");
-            return new StatusCodeResult((int)HttpStatusCode.InternalServerError);
+            case "3": // Test fault behavior
+                throw new Exception("Test exception from Scan");
+            default: // No idea what to do, so do nothing
+                return new BadRequestResult();
         }
     }
 
