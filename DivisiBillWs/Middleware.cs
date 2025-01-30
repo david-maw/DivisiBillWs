@@ -50,3 +50,48 @@ public class CustomExceptionHandler : HttpTriggerMiddlewareBase
         }
     }
 }
+public class AuthenticationMiddleware : HttpTriggerMiddlewareBase
+{
+    public AuthenticationMiddleware(ILogger<AuthenticationMiddleware> loggerParam)
+    {
+        logger = loggerParam;
+        licenseStore = new LicenseStore(logger);
+        storage = new(logger, licenseStore);
+        authorization = new(logger, licenseStore);
+    }
+
+    private readonly ILogger logger;
+    internal readonly DataStore<MealStorage> storage;
+    private readonly Authorization authorization;
+    private readonly LicenseStore licenseStore;
+
+    protected override async Task InnerInvoke(FunctionContext context, FunctionExecutionDelegate next)
+    {
+        var log = context.GetLogger<CustomExceptionHandler>();
+        string functionName = context.FunctionDefinition.Name;
+
+        bool needsVerification = true;
+        needsVerification = functionName switch
+        {
+            "version" or "scan" or "verify" => false,
+            _ => true,
+        };
+        if (needsVerification)
+        {
+            var httpContext = context.GetHttpContext();
+            if (httpContext == null)
+            {
+                log.LogError("In AuthenticateMiddleware, httpContext is null");
+                return;
+            }
+            string? userKey = await authorization.GetAuthorizedUserKeyAsync(httpContext.Request);
+            if (userKey == null)
+            {
+                logger.LogError($"In AuthenticateMiddleware for {functionName} authorization failed, returning BadRequest");
+                httpContext.Response.StatusCode = (int)HttpStatusCode.BadRequest;
+                return;
+            }
+        }
+        await next(context);
+    }
+}

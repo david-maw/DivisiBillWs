@@ -6,6 +6,7 @@ var host = new HostBuilder()
     .ConfigureFunctionsWebApplication((host, builder) =>
     {
         builder.UseMiddleware<CustomExceptionHandler>();
+        builder.UseMiddleware<AuthenticationMiddleware>();
         builder.UseSentry(host, options =>
             {
                 options.Dsn = DivisiBillWs.Generated.BuildInfo.DivisiBillSentryDsn;
