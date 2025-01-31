@@ -1,4 +1,5 @@
 ﻿using Microsoft.Azure.Functions.Worker.Middleware;
+using Sentry.Extensibility;
 using System.Text.Json;
 
 namespace DivisiBillWs;
@@ -94,6 +95,12 @@ public class AuthenticationMiddleware : HttpTriggerMiddlewareBase
             else
             {
                 httpContext.Items["userKey"] = userKey;
+                string? token = licenseStore.GetTokenIfNew(userKey);
+                if (token != null)
+                { // Add the token to the response headers
+                    logger.LogInformation($"In AuthenticationMiddleware, called licenseStore.GetTokenIfNew, returned {(token is null ? "null" : "value")}");
+                    httpContext.Response.Headers[Authorization.TokenHeaderName] = token;
+                }
             }
         }
         await next(context);

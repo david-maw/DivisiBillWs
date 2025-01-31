@@ -1,18 +1,9 @@
-﻿using Microsoft.AspNetCore.Http;
-using System.Text;
+﻿using System.Text;
 
 namespace DivisiBillWs;
 
 internal static class Extensions
 {
-    internal static void IncludeTokenIfSet(this HttpRequest httpRequest, string? Token)
-    {
-        if (!string.IsNullOrEmpty(Token))
-        {
-            httpRequest.Headers[Authorization.TokenHeaderName] = Token;
-        }
-    }
-
     /// <summary>
     /// Complement strings of decimal digits, for example "12345" => "98765"
     /// </summary>

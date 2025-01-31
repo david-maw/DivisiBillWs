@@ -96,10 +96,7 @@ internal class DataStore<T> where T : StorageClass, new()
             data.Summary = summaryData;
         }
         var addEntityResponse = await tableClient.UpsertEntityAsync(data);
-        if (addEntityResponse.IsError)
-            return new BadRequestResult();
-        httpRequest.IncludeTokenIfSet(licenseStore.GetTokenIfNew(userKey));
-        return new OkResult();
+        return addEntityResponse.IsError ? new BadRequestResult() : new OkResult();
     }
     public async Task<IActionResult> GetAsync(HttpRequest httpRequest, string userKey, string dataName)
     {
@@ -115,9 +112,6 @@ internal class DataStore<T> where T : StorageClass, new()
         if (data.HasValue)
         {
             logger.LogInformation($"In DataStore.GetAsync, got data, length = {data!.Value!.DataLength}");
-            string? token = licenseStore.GetTokenIfNew(userKey);
-            logger.LogInformation($"In DataStore.GetAsync, called licenseStore.GetTokenIfNew, returned {(token is null ? "null" : "value")}");
-            httpRequest.IncludeTokenIfSet(token);
             return new OkObjectResult(data!.Value!.Data);
         }
         else
@@ -133,7 +127,6 @@ internal class DataStore<T> where T : StorageClass, new()
             return new BadRequestResult();
         // Delete Entry
         var deleteResult = await tableClient.DeleteEntityAsync(userKey, dataName.Invert());
-        httpRequest.IncludeTokenIfSet(licenseStore.GetTokenIfNew(userKey));
         return deleteResult.IsError
             ? new NotFoundResult()
             : new OkResult();
@@ -180,7 +173,6 @@ internal class DataStore<T> where T : StorageClass, new()
                     storageClass.UseSummaryField ? item.Summary : null));
                 if (++count >= top) break;
             }
-            httpRequest.IncludeTokenIfSet(licenseStore.GetTokenIfNew(userKey));
             return new JsonResult(responseList, new JsonSerializerOptions()
             {
                 PropertyNamingPolicy = null,
