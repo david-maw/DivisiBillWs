@@ -18,21 +18,23 @@ internal class Authorization
     private readonly ILogger logger;
 
     /// <summary>
-    /// Gets an authorized user key, called from functions requiring authorization. Authorization comes in 3 forms:
-    /// 1) A header containing a pro license response from some license server (initially the Android play store)
-    /// 2) A token indicating that a license response was validated earlier
-    /// 3) An OCR license embedded in a multi-part HTTP request for the Scan function.
-    /// This always comes after a call to GetIsVerified (below) for the Pro license and the only license used
-    /// for verification is a Pro one (in fact it's used when verifying other license types - just OCR today).
-    /// 
-    /// The terms 'license' and 'product' are often synonymous, it's called a license in most of the code, but we avoid
-    /// using the word license as much as possible in user facing text. 
+    /// <para>Authorizes an http request based on a header and returns the user key if the user is authorized, 
+    /// called from functions requiring authorization.</para>
+    /// <para> Authorization comes in 3 forms:</para>
+    /// <list type="number">
+    /// <item>A header containing a pro license response from some license server (initially the Android play store).</item>
+    /// <item>A token indicating that a license response was validated earlier.</item>
+    /// <item>An OCR license embedded in a multi-part HTTP request (only for the Scan function).</item>
+    /// </list>
+    /// This function is only used for pro licenses (the first two cases).
+    /// <para>The terms 'license' and 'product' are often synonymous, it's called a license in most of the code, but we avoid
+    /// using the word license as much as possible in user facing text.</para> 
     /// </summary>
     /// <param name="httpRequest">The incoming request</param>
     /// <returns>The userKey for this license if the request passed authorization checks, null otherwise</returns>
     public async Task<string?> GetAuthorizedUserKeyAsync(HttpRequest httpRequest)
     {
-        // Early exit if there is a current token that matches (meaning we do not need to check the androidPurchase)
+        // Early exit if there is a current token that matches (meaning we do not need to check the license in androidPurchase)
         var tokenHeader = httpRequest.Headers.FirstOrDefault((x) => x.Key.ToLowerInvariant().Equals(TokenHeaderName));
         if (tokenHeader.Key != null)
         {
@@ -41,7 +43,8 @@ internal class Authorization
             if (userKey != null)
                 return userKey;// early exit, a valid token was provided, so no need to recheck the purchase license
         }
-        // If we reach here then authorize the hard way, by looking at the license  
+        // If we reach here then authorize the hard way, by looking at the license
+        // for old license records with no obfuscated account id we return the order id instead
         AndroidPurchase? androidPurchase = ProLicenseFromRequest(logger, httpRequest); // Extract a pro license from the header
         return (androidPurchase != null && await GetIsAuthorizedAsync(androidPurchase))
             ? androidPurchase.ObfuscatedAccountId ?? androidPurchase.OrderId! // This is a new pro licensee legitimately issued 
