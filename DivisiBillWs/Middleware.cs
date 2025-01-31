@@ -1,10 +1,10 @@
 ﻿using Microsoft.Azure.Functions.Worker.Middleware;
-using Sentry.Extensibility;
 using System.Text.Json;
 
 namespace DivisiBillWs;
 
 /// <summary>
+/// Middleware infrastructure and components
 /// Based on https://adamstorr.co.uk/blog/conditional-middleware-in-isolated-azure-functions/
 /// </summary>
 public static class MiddleWare
@@ -33,7 +33,6 @@ public class CustomExceptionHandler : HttpTriggerMiddlewareBase
         try
         {
             await next(context);
-            Console.WriteLine("No exception occurred");
         }
         catch (Exception ex)
         {
