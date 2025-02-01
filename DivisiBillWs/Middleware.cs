@@ -85,7 +85,7 @@ public class AuthenticationMiddleware : HttpTriggerMiddlewareBase
 
         bool needsVerification = functionName switch
         {
-            "version" or "scan" or "verify" => false,
+            "version" or "scan" or "verify" or "recordpurchase" => false,
             _ => true,
         };
 
