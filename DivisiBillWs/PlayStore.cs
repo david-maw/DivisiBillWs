@@ -4,12 +4,12 @@ namespace DivisiBillWs;
 internal class PlayStore
 {
     /// <summary>
-    /// Check whether a purchase is recognized by the Play Store and is known by us
-    /// Store it if it is not known by us so it will be known in future.
+    /// Check whether a purchase is recognized by the Play Store (verifying the ObfuscatedAccountId) and that it is known by us
+    /// If it is otherwise good, store it if it is not known by us so it will be known in future.
     /// </summary>
-    /// <param name="logger"></param>
-    /// <param name="androidPurchase"></param>
-    /// <param name="isSubscription"></param>
+    /// <param name="logger">An ILogger instance to use for logging</param>
+    /// <param name="androidPurchase">The purchase object to validate</param>
+    /// <param name="isSubscription">Whether the purchase is a subscription or a license</param>
     /// <returns></returns>
     internal static bool VerifyPurchase(ILogger logger, AndroidPurchase? androidPurchase, bool isSubscription)
     {
@@ -35,6 +35,7 @@ internal class PlayStore
                         PurchaseToken:{androidPurchase.PurchaseToken}
                     """);
             string? verifiedOrderId = null;
+            string? verifiedObfuscatedExternalAccountId = null;
             int? verifiedAcknowledgementState = null;
             string subscriptionState = string.Empty;
 
@@ -63,6 +64,7 @@ internal class PlayStore
                         {
                             verifiedOrderId = verifiedSubscriptionPurchase.LatestOrderId;
                             verifiedAcknowledgementState = verifiedSubscriptionPurchase.AcknowledgementState.Equals("ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED") ? 1 : 0;
+                            verifiedObfuscatedExternalAccountId = verifiedSubscriptionPurchase.ExternalAccountIdentifiers.ObfuscatedExternalAccountId;
                             subscriptionState = verifiedSubscriptionPurchase.SubscriptionState;
                         }
                     }
@@ -94,6 +96,7 @@ internal class PlayStore
                         {
                             verifiedOrderId = verifiedPurchase.OrderId;
                             verifiedAcknowledgementState = verifiedPurchase.AcknowledgementState;
+                            verifiedObfuscatedExternalAccountId = verifiedPurchase.ObfuscatedExternalAccountId;
                         }
                     }
                 }
@@ -102,7 +105,9 @@ internal class PlayStore
                     logger.LogError("In VerifyPurchase, exception calling Google to check purchase:{0}", ex.Message);
                 }
             }
-            if (verifiedAcknowledgementState == null && verifiedOrderId == null)
+            bool sameAccountId = (string.IsNullOrEmpty(verifiedObfuscatedExternalAccountId) && string.IsNullOrEmpty(androidPurchase.ObfuscatedAccountId))
+                || string.Equals(verifiedObfuscatedExternalAccountId, androidPurchase.ObfuscatedAccountId);
+            if (verifiedAcknowledgementState == null || verifiedOrderId == null || !sameAccountId)
                 logger.LogError("In VerifyPurchase, could not verify purchase with Google");
             else
             {
