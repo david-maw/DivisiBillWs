@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 
 namespace DivisiBillWs;
-
 internal class Authorization
 {
     internal const string PurchaseHeaderName = "divisibill-android-purchase";
@@ -13,7 +12,6 @@ internal class Authorization
         logger = loggerParam;
         licenseStore = licenseStoreParam;
     }
-
     private readonly LicenseStore licenseStore;
     private readonly ILogger logger;
 
@@ -50,6 +48,7 @@ internal class Authorization
             ? androidPurchase.ObfuscatedAccountId ?? androidPurchase.OrderId! // This is a new pro licensee legitimately issued 
             : null;
     }
+
     /// <summary>
     /// Evaluate whether an alleged license passed as authorization with a request to do something is known by us and by the 
     /// app store, called indirectly via <see cref="GetAuthorizedUserKeyAsync"/> from functions requiring

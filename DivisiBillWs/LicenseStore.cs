@@ -5,6 +5,9 @@ namespace DivisiBillWs;
 
 internal class LicenseStore
 {
+    /// <summary>
+    /// A class to manage the storage of tokens in Azure Table Storage, indexed by token value
+    /// </summary>
     private class TokenInfo : ITableEntity
     {
         // Purchase data
@@ -12,11 +15,15 @@ internal class LicenseStore
         public string ProOrderId { get; set; } = default!; // The ProOrderId that matches this token
 
         // Required for ITableEntity
-        public string RowKey { get; set; } = default!; // User must provide a value
-        public string PartitionKey { get; set; } = LicenseStore.PartitionKeyName; // User must provide a value
+        public string RowKey { get; set; } = default!; // token value
+        public string PartitionKey { get; set; } = LicenseStore.PartitionKeyName; // DivisiBill
         public ETag ETag { get; set; } = default!; // Value optional
         public DateTimeOffset? Timestamp { get; set; } = default!; // Set by system whenever item is changed
     }
+
+    /// <summary>
+    /// A class to manage the storage of licenses (aka purchases) in Azure Table Storage. Indexed by Order ID
+    /// </summary>
     private class PurchaseInfo : ITableEntity
     {
         // Purchase data
@@ -28,8 +35,8 @@ internal class LicenseStore
         public DateTimeOffset TimeUsed { get; set; } = default; // Set when using this license
 
         // Required for ITableEntity
-        public string RowKey { get; set; } = default!; // User must provide a value
-        public string PartitionKey { get; set; } = LicenseStore.PartitionKeyName; // User must provide a value
+        public string RowKey { get; set; } = default!; // OrderId
+        public string PartitionKey { get; set; } = LicenseStore.PartitionKeyName; // DivisiBill
         public ETag ETag { get; set; } = default!; // Value optional
         public DateTimeOffset? Timestamp { get; set; } = default!; // Set by system whenever item is changed
     }
@@ -53,6 +60,9 @@ internal class LicenseStore
     private static readonly TableClient tableClient = tableServiceClient.GetTableClient(TableName);
     private static readonly TableClient tokenTable = tableServiceClient.GetTableClient(TokenTableName);
 
+    /// <summary>
+    /// Create the tables if they do not exist
+    /// </summary>
     static LicenseStore()
     {
         var resp = tableClient.CreateIfNotExists();
@@ -62,6 +72,7 @@ internal class LicenseStore
     private readonly ILogger logger;
     internal LicenseStore(ILogger loggerParam) => logger = loggerParam;
     private bool IsExpiring(DateTime expirationTime) => (expirationTime.ToLocalTime() - DateTime.Now) < TimeSpan.FromSeconds(5);
+
     /// <summary>
     /// Return the new token if the old one is expired, otherwise null
     /// </summary>
@@ -118,6 +129,7 @@ internal class LicenseStore
         }
         return true;
     }
+
     /// <summary>
     /// Create a token and insert it in the table
     /// </summary>
@@ -149,6 +161,12 @@ internal class LicenseStore
             throw new ApplicationException("incomingToken generation failed");
         }
     }
+
+    /// <summary>
+    /// Get the user key from a token by looking it up in the token table (also validates the token).
+    /// </summary>
+    /// <param name="incomingToken">The token to look up</param>
+    /// <returns>A user key or null if the token is unknown or expired</returns>
     public string? GetUserKeyFromToken(string? incomingToken)
     {
         if (string.IsNullOrEmpty(incomingToken))
@@ -174,9 +192,10 @@ internal class LicenseStore
             logger.LogInformation($"In LicenseStore.GetUserKeyFromToken, {tokenTable.Name}[{PartitionKeyName}, {incomingToken}] not found, returning false");
         return null;
     }
+
     /// <summary>
-    /// Validate a license by making sure it is known (by its ProOrderId and PurchaseToken). If the stored license has no PurchaseToken
-    /// then give it the one from the test license as long as that PurchaseToken is not already in use somewhere else.
+    /// <para>Return the number of available scans associated with a license. Start by making sure it is known (by its ProOrderId and PurchaseToken).</para>
+    /// <para>If the stored license has no PurchaseToken then give it the one from the incoming license as long as that PurchaseToken is not already in use somewhere else.</para>
     /// </summary>
     /// <param name="androidPurchase">The purchase object representing the license</param>
     /// <returns>The number of scans remaining for this license or -1 if the license was not found</returns>
@@ -265,6 +284,7 @@ internal class LicenseStore
 
             await foreach (var row in v)
                 totalScansLeft += row.ScansLeft;
+            // Now add in the newly purchased scans and assign the result to ScansLeft
             purchaseInfo.ScansLeft = totalScansLeft + OcrLicenseScans * int.Max(androidPurchase.Quantity, 1);
             // Now add zeroing out the scan counts to the transaction
             await foreach (var row in v)
@@ -296,6 +316,13 @@ internal class LicenseStore
         }
         return completedOk;
     }
+
+    /// <summary>
+    /// <para>Decrement the number of scans left for a license, normally because one has been consumed by requesting OCR.</para>
+    /// <para>Also updates the last update time of the record.</para>
+    /// </summary>
+    /// <param name="orderId">The order to decrement</param>
+    /// <returns>The number of scans remaining after being decremented</returns>
     public async Task<int> DecrementScansAsync(string orderId)
     {
         ArgumentException.ThrowIfNullOrEmpty(orderId);
@@ -316,6 +343,12 @@ internal class LicenseStore
         else
             return 0;
     }
+
+    /// <summary>
+    /// <para>Update the last use time of a license, normally as a result of verifying a license.</para>
+    /// </summary>
+    /// <param name="orderId"></param>
+    /// <returns></returns>
     public async Task<bool> UpdateTimeUsedAsync(string orderId)
     {
         ArgumentException.ThrowIfNullOrEmpty(orderId);
