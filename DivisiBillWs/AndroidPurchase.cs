@@ -3,7 +3,7 @@
 namespace DivisiBillWs;
 
 /// <summary>
-/// An object describing an Android either a license or a subscription). Originally delivered in JSON format
+/// An object describing either an Android license or a subscription. Originally delivered in JSON format
 /// from various Android APIs, either via a call to the play store or from the Android Play API via DivisiBill. 
 /// </summary>
 public class AndroidPurchase

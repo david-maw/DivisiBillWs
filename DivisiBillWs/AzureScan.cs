@@ -4,6 +4,9 @@ using System.Diagnostics;
 
 namespace DivisiBillWs;
 
+/// <summary>
+/// Interface to Azure Cognitive Services for scanning receipts
+/// </summary>
 internal static class AzureScan
 {
     private static string GetString(this DocumentField field) => field.FieldType switch
@@ -18,6 +21,13 @@ internal static class AzureScan
         DocumentFieldType.Currency => field.Value.AsCurrency().ToString()!,
         _ => string.Empty,
     };
+    /// <summary>
+    /// <para>Call Azure cognitive services to scan a receipt represented by a jpeg image in a stream.</para>
+    /// <para>It returns a <see cref="ScannedBill"/> object describing the bill in a simple format understood by DivisiBill.</para>
+    /// </summary>
+    /// <param name="s">The stram to be decoded (usually from a HTTP message</param>
+    /// <returns>A <see cref="ScannedBill"/> object describing the bill</returns>
+    /// <exception cref="InvalidOperationException"></exception>
     internal static async Task<ScannedBill> CallScanStreamAsync(Stream s)
     {
         if (string.IsNullOrEmpty(Generated.BuildInfo.DivisiBillCognitiveServicesEndpoint))
