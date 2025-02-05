@@ -88,6 +88,13 @@ public class RecordPurchaseFunction
                 // All is well so far and we have a legitimately issued license
                 // Now ensure it is not already known and if not, remember it for the future
                 bool recorded = await licenseStore.RecordAsync(androidPurchase);
+                if (recorded && verifiedAcknowledgementState == 0)
+                {
+                    if (isSubscription)
+                        LicenseCheck.AcknowledgeSubscriptionPurchase(androidPurchase.PackageName, androidPurchase.ProductId, androidPurchase.PurchaseToken);
+                    else
+                        LicenseCheck.AcknowledgeProductPurchase(androidPurchase.PackageName, androidPurchase.ProductId, androidPurchase.PurchaseToken);
+                }
                 return recorded;
             }
         }

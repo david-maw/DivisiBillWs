@@ -28,38 +28,23 @@ internal static class LicenseCheck
 
         return credential;
     }
-    public static SubscriptionPurchaseV2? GetSubscriptionPurchase(string packageName, string productId, string token)
+    private static AndroidPublisherService GetAndroidPublisherService()
     {
         ServiceAccountCredential? serviceAccountCredential = GetServiceAccountCredential();
-
-        if (serviceAccountCredential == null)
-            return null;
-        else
-        {
-            // Create the service.
-            var service = new AndroidPublisherService(new BaseClientService.Initializer()
+        return serviceAccountCredential == null
+            ? throw new System.Exception("No service account credential")
+            : new AndroidPublisherService(new BaseClientService.Initializer()
             {
                 HttpClientInitializer = serviceAccountCredential,
                 ApplicationName = "DivisiBillWs",
             });
-            return service.Purchases.Subscriptionsv2.Get(packageName, token).Execute();
-        }
     }
-    public static ProductPurchase? GetProductPurchase(string packageName, string productId, string token)
-    {
-        ServiceAccountCredential? serviceAccountCredential = GetServiceAccountCredential();
-
-        if (serviceAccountCredential == null)
-            return null;
-        else
-        {
-            // Create the service.
-            var service = new AndroidPublisherService(new BaseClientService.Initializer()
-            {
-                HttpClientInitializer = serviceAccountCredential,
-                ApplicationName = "DivisiBillWs",
-            });
-            return service.Purchases.Products.Get(packageName, productId, token).Execute();
-        }
-    }
+    public static SubscriptionPurchaseV2? GetSubscriptionPurchase(string packageName, string productId, string token) =>
+        GetAndroidPublisherService().Purchases.Subscriptionsv2.Get(packageName, token).Execute();
+    public static ProductPurchase? GetProductPurchase(string packageName, string productId, string token) =>
+        GetAndroidPublisherService().Purchases.Products.Get(packageName, productId, token).Execute();
+    public static void AcknowledgeProductPurchase(string packageName, string productId, string token) =>
+        GetAndroidPublisherService().Purchases.Products.Acknowledge(new ProductPurchasesAcknowledgeRequest(), packageName, productId, token).Execute();
+    public static void AcknowledgeSubscriptionPurchase(string packageName, string productId, string token) =>
+        GetAndroidPublisherService().Purchases.Subscriptions.Acknowledge(new SubscriptionPurchasesAcknowledgeRequest(), packageName, productId, token).Execute();
 }
