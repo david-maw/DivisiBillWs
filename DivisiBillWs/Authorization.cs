@@ -149,14 +149,6 @@ internal class Authorization
 
             int scans = await licenseStore.GetScansAsync(androidPurchase!); // Tells us it is one of ours
 
-            if (scans == -1)
-            {
-                // The license was verified by the Play Store but not known to us; that's no great problem, just store it and try again
-                bool recorded = await RecordPurchaseFunction.RecordAsync(androidPurchase, isSubscription, logger, licenseStore);
-                if (recorded)
-                    scans = await licenseStore.GetScansAsync(androidPurchase!);
-            }
-
             if (scans >= 0)
             {
                 await licenseStore.UpdateTimeUsedAsync(androidPurchase.OrderId);
