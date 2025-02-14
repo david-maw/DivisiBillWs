@@ -31,7 +31,8 @@ public class PersonListFunction
     Route = "personlist/{id}")] HttpRequest httpRequest, string id)
     {
         logger.LogInformation($"PersonListFunction HTTP trigger function processing a {httpRequest.Method} request for ID {id}");
-        string? userKey = httpRequest.HttpContext.Items["userKey"] as string;
+        if (httpRequest.HttpContext.Items["userKey"] is not string userKey)
+            return new UnauthorizedResult(); // Should never happen because the middleware takes care of this
         // Already authorized, so call the appropriate function
         Task<IActionResult> actionResult = httpRequest.Method switch
         {
