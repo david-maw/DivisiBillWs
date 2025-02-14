@@ -10,7 +10,6 @@ var host = new HostBuilder()
         builder.UseSentry(host, options =>
             {
                 options.Dsn = DivisiBillWs.Generated.BuildInfo.DivisiBillSentryDsn;
-                options.EnableTracing = false;
                 options.SetBeforeSend(sentryEvent => DivisiBillWs.Utility.IsDebug ? null : sentryEvent);
                 //  Other options to consider
                 //    options.Release = Utilities.VersionName;
