@@ -5,22 +5,16 @@ using Microsoft.Extensions.Hosting;
 
 namespace DivisiBillWs;
 
-public class VersionFunction
+public class VersionFunction(ILoggerFactory loggerFactory, IHostEnvironment environmentParam)
 {
-    private readonly ILogger _logger;
-    private readonly IHostEnvironment environment;
+    private readonly ILogger _logger = loggerFactory.CreateLogger<VersionFunction>();
+    private readonly IHostEnvironment environment = environmentParam;
     private readonly bool IsDebug =
 #if DEBUG
             true;
 #else
             false;
 #endif
-
-    public VersionFunction(ILoggerFactory loggerFactory, IHostEnvironment environmentParam)
-    {
-        _logger = loggerFactory.CreateLogger<VersionFunction>();
-        environment = environmentParam;
-    }
     public static string BuildTime { get; } = DateTime.Parse(BuildEnvironment.BuildTimeString, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind).ToLocalTime().ToString();
 
     /// Beware, according to https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference?tabs=blob#parallel-execution
