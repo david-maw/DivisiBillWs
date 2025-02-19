@@ -98,15 +98,15 @@ Then reboot (this hint came from https://superuser.com/questions/1579346/many-ex
 
 If you're recreating the ngrok configuration it's typically at %LOCALAPPDATA%\ngrok\ngrok.yml and looks like this:
 ```
-    version: "2"
-    region: us
-    authtoken: <string of 50 or so characters>
-    tunnels:
-        divisibillws:
-            proto: http
-            domain: some-random-words.ngrok-free.app
-            addr: 7190
-            host_header: localhost
+            version: 3
+            endpoints:
+              - name: divisibillws
+                url: pheasant-mature-coyote.ngrok-free.app
+                upstream:
+                  url: http://localhost:7190
+            agent:
+                connect_url: connect.us.ngrok-agent.com:443
+                authtoken: <string of 50 or so characters>
 ```
 The authtoken is specific to a registered user (registration is free) go to 
 https://dashboard.ngrok.com the port number is from properties\launchsettings.json in the DivisiBillWs project.
