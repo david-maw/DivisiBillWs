@@ -7,17 +7,15 @@ public class MealFunction
 {
     private readonly ILogger logger;
     internal readonly DataStore<MealStorage> storage;
+    private readonly LicenseStore licenseStore;
 
     public MealFunction(ILoggerFactory loggerFactory)
     {
         logger = loggerFactory.CreateLogger<MealFunction>();
         licenseStore = new LicenseStore(logger);
         storage = new(logger, licenseStore);
-        authorization = new(logger, licenseStore);
     }
 
-    private readonly Authorization authorization;
-    private readonly LicenseStore licenseStore;
 
     /// <summary>
     /// CRUD for a single meal. Beware, according to https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference?tabs=blob#parallel-execution
