@@ -53,7 +53,7 @@ internal class PlayStore
                     else
                     {
                         verifiedSubscriptionPurchase = LicenseCheck.GetSubscriptionPurchase(
-                            androidPurchase.PackageName, androidPurchase.ProductId, androidPurchase.PurchaseToken);
+                            androidPurchase.PackageName, androidPurchase.PurchaseToken);
                         if (verifiedSubscriptionPurchase != null)
                         {
                             verifiedOrderId = verifiedSubscriptionPurchase.LatestOrderId;

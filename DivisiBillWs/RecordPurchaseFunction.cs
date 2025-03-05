@@ -39,11 +39,11 @@ public class RecordPurchaseFunction
             int? verifiedAcknowledgementState = null;
             if (isSubscription)
             {
-                Google.Apis.AndroidPublisher.v3.Data.SubscriptionPurchaseV2? verifiedPurchase = null;
+                Google.Apis.AndroidPublisher.v3.Data.SubscriptionPurchaseV2? verifiedPurchase;
                 try
                 {
                     verifiedPurchase = LicenseCheck.GetSubscriptionPurchase(
-                        androidPurchase.PackageName, androidPurchase.ProductId, androidPurchase.PurchaseToken);
+                        androidPurchase.PackageName, androidPurchase.PurchaseToken);
                     if (verifiedPurchase != null)
                     {
                         verifiedWithStore = true;
@@ -57,10 +57,9 @@ public class RecordPurchaseFunction
             }
             else
             {
-                Google.Apis.AndroidPublisher.v3.Data.ProductPurchase? verifiedPurchase = null;
                 try
                 {
-                    verifiedPurchase = LicenseCheck.GetProductPurchase(
+                    Google.Apis.AndroidPublisher.v3.Data.ProductPurchase? verifiedPurchase = LicenseCheck.GetProductPurchase(
                         androidPurchase.PackageName, androidPurchase.ProductId, androidPurchase.PurchaseToken);
                     if (verifiedPurchase != null)
                     {
@@ -103,7 +102,7 @@ public class RecordPurchaseFunction
         // Get the options passed in the query string
         var query = httpRequest.Query;
         string subscription = query["subscription"].ToString();
-        AndroidPurchase? androidPurchase = null;
+        AndroidPurchase? androidPurchase;
         try
         {
             androidPurchase = await AndroidPurchase.FromJsonAsync(httpRequest.Body);

@@ -8,17 +8,10 @@ namespace DivisiBillWs;
 /// </summary>
 public class AndroidPurchase
 {
+    private static readonly JsonSerializerOptions jsonSerializerOptionsCaseInsensitive = new() { PropertyNameCaseInsensitive = true };
     public AndroidPurchase() { }
-    public static AndroidPurchase? FromJson(string androidPurchaseJson)
-    {
-        return JsonSerializer.Deserialize<AndroidPurchase>(androidPurchaseJson,
-                        new JsonSerializerOptions() { PropertyNameCaseInsensitive = true });
-    }
-    public static async Task<AndroidPurchase?> FromJsonAsync(Stream androidPurchaseJson)
-    {
-        return await JsonSerializer.DeserializeAsync<AndroidPurchase>(androidPurchaseJson,
-                        new JsonSerializerOptions() { PropertyNameCaseInsensitive = true });
-    }
+    public static AndroidPurchase? FromJson(string androidPurchaseJson) => JsonSerializer.Deserialize<AndroidPurchase>(androidPurchaseJson, jsonSerializerOptionsCaseInsensitive);
+    public static async Task<AndroidPurchase?> FromJsonAsync(Stream androidPurchaseJson) => await JsonSerializer.DeserializeAsync<AndroidPurchase>(androidPurchaseJson, jsonSerializerOptionsCaseInsensitive);
     /// <summary>
     /// Check that the license if for a specified <see cref="ProductId"/>, has an <see cref="OrderId"/> and <see cref="PurchaseToken"/>, 
     /// and is for <see cref="LicenseStore.ExpectedPackageName"/> (DivisiBill).

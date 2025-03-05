@@ -63,15 +63,11 @@ internal class LicenseStore
     /// <summary>
     /// Create the tables if they do not exist
     /// </summary>
-    static LicenseStore()
-    {
-        var resp = tableClient.CreateIfNotExists();
-        resp = tokenTable.CreateIfNotExists();
-    }
+    static LicenseStore() => tableClient.CreateIfNotExists();
 
     private readonly ILogger logger;
     internal LicenseStore(ILogger loggerParam) => logger = loggerParam;
-    private bool IsExpiring(DateTime expirationTime) => (expirationTime.ToLocalTime() - DateTime.Now) < TimeSpan.FromSeconds(5);
+    private static bool IsExpiring(DateTime expirationTime) => (expirationTime.ToLocalTime() - DateTime.Now) < TimeSpan.FromSeconds(5);
 
     /// <summary>
     /// Return the new token if the old one is expired, otherwise null

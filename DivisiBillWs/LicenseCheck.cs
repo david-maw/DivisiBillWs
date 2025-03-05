@@ -39,7 +39,7 @@ internal static class LicenseCheck
                 ApplicationName = "DivisiBillWs",
             });
     }
-    public static SubscriptionPurchaseV2? GetSubscriptionPurchase(string packageName, string productId, string token) =>
+    public static SubscriptionPurchaseV2? GetSubscriptionPurchase(string packageName, string token) =>
         GetAndroidPublisherService().Purchases.Subscriptionsv2.Get(packageName, token).Execute();
     public static ProductPurchase? GetProductPurchase(string packageName, string productId, string token) =>
         GetAndroidPublisherService().Purchases.Products.Get(packageName, productId, token).Execute();

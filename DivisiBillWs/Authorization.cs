@@ -127,7 +127,7 @@ internal class Authorization
     /// <returns>The number of remaining scans allocated to this license</returns>
     internal async Task<IActionResult> GetIsVerifiedAsync(HttpRequest httpRequest, bool isSubscription)
     {
-        AndroidPurchase? androidPurchase = null;
+        AndroidPurchase? androidPurchase;
 
         try
         {

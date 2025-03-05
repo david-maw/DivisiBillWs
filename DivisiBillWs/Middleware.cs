@@ -15,11 +15,9 @@ public static class MiddleWare
 /// <summary>
 /// Base middleware class, allows easy declaration of child classes valid only for certain trigger types
 /// </summary>
-public abstract class TriggerMiddlewareBase : IFunctionsWorkerMiddleware
+public abstract class TriggerMiddlewareBase(ILogger<TriggerMiddlewareBase> loggerParam) : IFunctionsWorkerMiddleware
 {
-    public TriggerMiddlewareBase(ILogger<TriggerMiddlewareBase> loggerParam) => logger = loggerParam;
-
-    protected readonly ILogger logger;
+    protected readonly ILogger logger = loggerParam;
 
     public abstract string TriggerType { get; }
 
@@ -32,17 +30,16 @@ public abstract class TriggerMiddlewareBase : IFunctionsWorkerMiddleware
 /// <summary>
 /// Specialization for HTTP triggers, exists for convenience
 /// </summary>
-public abstract class HttpTriggerMiddlewareBase : TriggerMiddlewareBase
+public abstract class HttpTriggerMiddlewareBase(ILogger<HttpTriggerMiddlewareBase> loggerParam) : TriggerMiddlewareBase(loggerParam)
 {
-    public HttpTriggerMiddlewareBase(ILogger<HttpTriggerMiddlewareBase> loggerParam) : base(loggerParam) { }
     public override string TriggerType => "httpTrigger";
 }
 /// <summary>
 /// A concrete class designed to catch and report exceptions in azure functions
 /// </summary>
-public class CustomExceptionHandler : HttpTriggerMiddlewareBase
+public class CustomExceptionHandler(ILogger<CustomExceptionHandler> loggerParam) : HttpTriggerMiddlewareBase(loggerParam)
 {
-    public CustomExceptionHandler(ILogger<CustomExceptionHandler> loggerParam) : base(loggerParam) { }
+    private static readonly JsonSerializerOptions jsonOptions = new() { WriteIndented = true };
     protected override async Task InnerInvoke(FunctionContext context, FunctionExecutionDelegate next)
     {
         try
@@ -56,7 +53,7 @@ public class CustomExceptionHandler : HttpTriggerMiddlewareBase
             var response = request!.CreateResponse();
             response.StatusCode = HttpStatusCode.InternalServerError; // return an error code to the caller
             var errorMessage = new { Function = context.FunctionDefinition.Name, Message = "An unhandled exception occurred. Please try again later", Exception = ex.Message };
-            string responseBody = JsonSerializer.Serialize(errorMessage, new JsonSerializerOptions { WriteIndented = true });
+            string responseBody = JsonSerializer.Serialize(errorMessage, jsonOptions);
             await response.WriteStringAsync(responseBody);
             context.GetInvocationResult().Value = response;
             logger.LogError(ex, "Exception Thrown Invoking '{FunctionName}'", context.FunctionDefinition.Name);
