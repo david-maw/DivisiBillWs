@@ -22,6 +22,9 @@ public class VersionFunction(ILoggerFactory loggerFactory, IHostEnvironment envi
     [Function("version")]
     public IActionResult Run([HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequest httpRequest)
     {
+
+        var _ = httpRequest; // Use the parameter to avoid a warning
+
         _logger.LogInformation("The 'version' web service function is processing a request.");
 
         return new OkObjectResult($""" 
