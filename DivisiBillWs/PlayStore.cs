@@ -17,29 +17,23 @@ internal class PlayStore
         if (androidPurchase == null)
             logger.LogError("In VerifyPurchase, could not deserialize a purchase");
         else if (string.IsNullOrEmpty(androidPurchase.PackageName))
-            logger.LogError("In VerifyPurchase, could not extract a " + nameof(AndroidPurchase.PackageName));
+            logger.LogError("In VerifyPurchase, could not extract a {PropertyName}", nameof(AndroidPurchase.PackageName));
         else if (!androidPurchase.PackageName.Equals(LicenseStore.ExpectedPackageName)) // only DivisiBill Licenses can be used
-            logger.LogError("In VerifyPurchase, package name was not com.autoplus.divisibill: " + androidPurchase.PackageName);
+            logger.LogError("In VerifyPurchase, package name was not com.autoplus.divisibill: {PackageName}", androidPurchase.PackageName);
         else if (string.IsNullOrEmpty(androidPurchase.ProductId))
-            logger.LogError("In VerifyPurchase, could not extract a " + nameof(AndroidPurchase.ProductId));
+            logger.LogError("In VerifyPurchase, could not extract a {PropertyName}", nameof(AndroidPurchase.ProductId));
         else if (string.IsNullOrEmpty(androidPurchase.PurchaseToken))
-            logger.LogError("In VerifyPurchase, could not extract a " + nameof(AndroidPurchase.PurchaseToken));
+            logger.LogError("In VerifyPurchase, could not extract a {PropertyName}", nameof(AndroidPurchase.PurchaseToken));
         else
         {
-            logger.LogInformation($"""
-                    In VerifyPurchase androidPurchase
-                        OrderId:{androidPurchase.OrderId}
-                        PackageName:{androidPurchase.PackageName}
-                        ProductId:{androidPurchase.ProductId}
-                        ObfuscatedAccountid:{androidPurchase.ObfuscatedAccountId}
-                        PurchaseToken:{androidPurchase.PurchaseToken}
-                    """);
+            logger.LogInformation("In VerifyPurchase androidPurchase OrderId:{OrderId} PackageName:{PackageName} ProductId:{ProductId} ObfuscatedAccountId:{ObfuscatedAccountId} PurchaseToken:{PurchaseToken}",
+                androidPurchase.OrderId, androidPurchase.PackageName, androidPurchase.ProductId, androidPurchase.ObfuscatedAccountId, androidPurchase.PurchaseToken);
             string? verifiedOrderId = null;
             string? verifiedObfuscatedExternalAccountId = null;
             int? verifiedAcknowledgementState = null;
             string subscriptionState = string.Empty;
 
-#if DEBUG // permit a test orderid
+#if DEBUG // permit a test orderId
             if (androidPurchase.OrderId != null && androidPurchase.OrderId.Equals("Fake-OrderId"))
                 isPermittedTestOrderId = true;
 #endif
@@ -71,7 +65,7 @@ internal class PlayStore
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError("In VerifyPurchase, exception calling Google to check subscription:{0}", ex.Message);
+                    logger.LogError("In VerifyPurchase, exception calling Google to check subscription: {Message}", ex.Message);
                 }
             }
             else
@@ -102,7 +96,7 @@ internal class PlayStore
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError("In VerifyPurchase, exception calling Google to check purchase:{0}", ex.Message);
+                    logger.LogError("In VerifyPurchase, exception calling Google to check purchase: {Message}", ex.Message);
                 }
             }
             bool sameAccountId = (string.IsNullOrEmpty(verifiedObfuscatedExternalAccountId) && string.IsNullOrEmpty(androidPurchase.ObfuscatedAccountId))
@@ -123,18 +117,18 @@ internal class PlayStore
                     // Must be currently active
                     if (subscriptionState is "SUBSCRIPTION_STATE_ACTIVE" or "SUBSCRIPTION_STATE_IN_GRACE_PERIOD")
                     {
-                        logger.LogInformation($"In VerifyPurchase, successfully verified {(verifiedAcknowledgementState == 1 ? "acknowledged" : "unacknowledged")} license with Google");
+                        logger.LogInformation("In VerifyPurchase, successfully verified {AcknowledgementState} license with Google", verifiedAcknowledgementState == 1 ? "acknowledged" : "unacknowledged");
                         return true;
                     }
                     else
                     {
-                        logger.LogError($"In VerifyPurchase, subscription verification failed because SubscriptionState = '{subscriptionState}'");
+                        logger.LogError("In VerifyPurchase, subscription verification failed because SubscriptionState = '{SubscriptionState}'", subscriptionState);
                         return false;
                     }
                 }
                 else
                 {
-                    logger.LogInformation($"In VerifyPurchase, successfully verified {(verifiedAcknowledgementState == 1 ? "acknowledged" : "unacknowledged")} license with Google");
+                    logger.LogInformation("In VerifyPurchase, successfully verified {AcknowledgementState} license with Google", verifiedAcknowledgementState == 1 ? "acknowledged" : "unacknowledged");
                     return true;
                 }
             }

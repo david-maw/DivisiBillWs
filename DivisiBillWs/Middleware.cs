@@ -59,7 +59,7 @@ public class CustomExceptionHandler : HttpTriggerMiddlewareBase
             string responseBody = JsonSerializer.Serialize(errorMessage, new JsonSerializerOptions { WriteIndented = true });
             await response.WriteStringAsync(responseBody);
             context.GetInvocationResult().Value = response;
-            logger.LogError($"Exception Thrown Invoking '{context.FunctionDefinition.Name}'");
+            logger.LogError(ex, "Exception Thrown Invoking '{FunctionName}'", context.FunctionDefinition.Name);
         }
     }
 }
@@ -101,7 +101,7 @@ public class AuthenticationMiddleware : HttpTriggerMiddlewareBase
             string? userKey = await authorization.GetAuthorizedUserKeyAsync(httpContext.Request);
             if (userKey == null)
             {
-                logger.LogError($"In AuthenticateMiddleware for {functionName} authorization failed, returning BadRequest");
+                logger.LogError("In AuthenticateMiddleware for {FunctionName} authorization failed, returning BadRequest", functionName);
                 httpContext.Response.StatusCode = (int)HttpStatusCode.BadRequest;
                 return;
             }
@@ -111,7 +111,7 @@ public class AuthenticationMiddleware : HttpTriggerMiddlewareBase
                 string? token = licenseStore.GetTokenIfNew(userKey);
                 if (token != null)
                 { // Add the token to the response headers
-                    logger.LogInformation($"In AuthenticationMiddleware, called licenseStore.GetTokenIfNew, returned {(token is null ? "null" : "value")}");
+                    logger.LogInformation("In AuthenticationMiddleware, called licenseStore.GetTokenIfNew, returned {TokenStatus}", token is null ? "null" : "value");
                     httpContext.Response.Headers[Authorization.TokenHeaderName] = token;
                 }
             }

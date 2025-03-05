@@ -87,21 +87,22 @@ internal class LicenseStore
         {
             if (IsExpiring(proTokenInfo.TimeExpired))
             {
-                logger.LogInformation($"In LicenseStore.GetTokenIfNew for {userKey} found {tokenTable.Name}[{PartitionKeyName}, {proTokenInfo.RowKey}] expiring, " +
-                    "returning a replacement");
+                logger.LogInformation("In LicenseStore.GetTokenIfNew for {userKey} found {tokenTableName}[{partitionKeyName}, {rowKey}] expiring, returning a replacement",
+                    userKey, tokenTable.Name, PartitionKeyName, proTokenInfo.RowKey);
                 if (InternalClearToken(userKey, proTokenInfo))
                     return GenerateToken(userKey);
                 else
-                    logger.LogInformation($"In LicenseStore.GetTokenIfNew for {userKey} found {tokenTable.Name}[{PartitionKeyName}, {proTokenInfo.RowKey}] but it went away, " +
-                        "returning null");
+                    logger.LogInformation("In LicenseStore.GetTokenIfNew for {userKey} found {tokenTableName}[{partitionKeyName}, {rowKey}] but it went away, returning null",
+                        userKey, tokenTable.Name, PartitionKeyName, proTokenInfo.RowKey);
             }
             else
-                logger.LogInformation($"In LicenseStore.GetTokenIfNew for {userKey} found {tokenTable.Name}[{PartitionKeyName}, {proTokenInfo.RowKey}] is not expiring, " +
-                    "returning null");
+                logger.LogInformation("In LicenseStore.GetTokenIfNew for {userKey} found {tokenTableName}[{partitionKeyName}, {rowKey}] is not expiring, returning null",
+                    userKey, tokenTable.Name, PartitionKeyName, proTokenInfo.RowKey);
         }
         else // There is no stored token
         {
-            logger.LogInformation($"In LicenseStore.GetTokenIfNew for {userKey} not found in {tokenTable.Name}, returning a new one");
+            logger.LogInformation("In LicenseStore.GetTokenIfNew for {userKey} not found in {tokenTableName}, returning a new one",
+                userKey, tokenTable.Name);
             return GenerateToken(userKey);
         }
         return null;
@@ -123,7 +124,8 @@ internal class LicenseStore
             else
             {
                 string responseInfo = (response != null) ? ", response = " + response.ToString() : "";
-                logger.LogError($"In LicenseStore.ClearToken for {userKey} found {tokenTable.Name}[{PartitionKeyName}, {oldTokenInfo.RowKey}], unable to remove it, throwing exception");
+                logger.LogError("In LicenseStore.ClearToken for {userKey} found {tokenTableName}[{partitionKeyName}, {rowKey}], unable to remove it, throwing exception",
+                    userKey, tokenTable.Name, PartitionKeyName, oldTokenInfo.RowKey);
                 throw new ApplicationException("Token Removal Failed" + responseInfo);
             }
         }
@@ -152,12 +154,14 @@ internal class LicenseStore
         var response = tokenTable.UpsertEntity(info);
         if (!response.IsError)
         {
-            logger.LogInformation($"In LicenseStore.GenerateToken, {tokenTable.Name}[{info.PartitionKey}, {info.RowKey}] has value, returning " + Token);
+            logger.LogInformation("In LicenseStore.GenerateToken, {tokenTableName}[{partitionKeyName}, {rowKey}] has value, returning {token}",
+                tokenTable.Name, info.PartitionKey, info.RowKey, Token);
             return Token;
         }
         else
         {
-            logger.LogError($"In LicenseStore.GenerateToken, {tokenTable.Name}[{info.PartitionKey}, {info.RowKey}] not inserted, throwing exception");
+            logger.LogError("In LicenseStore.GenerateToken, {tokenTableName}[{partitionKeyName}, {rowKey}] not inserted, throwing exception",
+                tokenTable.Name, info.PartitionKey, info.RowKey);
             throw new ApplicationException("incomingToken generation failed");
         }
     }
@@ -181,15 +185,18 @@ internal class LicenseStore
             if (tokenInfoResponse!.Value!.TimeExpired > DateTime.UtcNow)
             {
                 // The purchase was already validated with the app store, now we know it's one of ours
-                logger.LogInformation($"In LicenseStore.GetUserKeyFromToken, {tokenTable.Name}[{PartitionKeyName}, {incomingToken}] is current, returning true");
+                logger.LogInformation("In LicenseStore.GetUserKeyFromToken, {tokenTableName}[{partitionKeyName}, {incomingToken}] is current, returning true",
+                    tokenTable.Name, PartitionKeyName, incomingToken);
                 // This means we can get the proLicense value from the token table
                 return tokenInfoResponse.Value.ProOrderId;
             }
             else
-                logger.LogInformation($"In LicenseStore.GetUserKeyFromToken, {tokenTable.Name}[{PartitionKeyName}, {incomingToken}] is not current, returning false");
+                logger.LogInformation("In LicenseStore.GetUserKeyFromToken, {tokenTableName}[{partitionKeyName}, {incomingToken}] is not current, returning false",
+                    tokenTable.Name, PartitionKeyName, incomingToken);
         }
         else
-            logger.LogInformation($"In LicenseStore.GetUserKeyFromToken, {tokenTable.Name}[{PartitionKeyName}, {incomingToken}] not found, returning false");
+            logger.LogInformation("In LicenseStore.GetUserKeyFromToken, {tokenTableName}[{partitionKeyName}, {incomingToken}] not found, returning false",
+                tokenTable.Name, PartitionKeyName, incomingToken);
         return null;
     }
 
@@ -217,19 +224,22 @@ internal class LicenseStore
                 var existingPurchase = tableClient.QueryAsync<PurchaseInfo>(r => r.PurchaseToken.Equals(androidPurchase.PurchaseToken)).ToBlockingEnumerable().FirstOrDefault();
                 if (existingPurchase is not null)
                 {
-                    logger.LogError($"In LicenseStore.GetScans, license {existingPurchase.PartitionKey} is already using PurchaseToken {androidPurchase.PurchaseToken}, returning error");
+                    logger.LogError("In LicenseStore.GetScans, license {partitionKey} is already using PurchaseToken {purchaseToken}, returning error",
+                        existingPurchase.PartitionKey, androidPurchase.PurchaseToken);
                     return -2;
                 }
                 purchaseInfo.PurchaseToken = androidPurchase.PurchaseToken;
                 purchaseInfo.TimeUsed = DateTime.UtcNow;
                 await tableClient.UpdateEntityAsync(purchaseInfo, purchaseInfo.ETag);
             }
-            logger.LogInformation($"In LicenseStore.GetScans, {tableClient.Name}[{PartitionKeyName}, {androidPurchase.OrderId}] has value, returning " + purchaseInfo.ScansLeft);
+            logger.LogInformation("In LicenseStore.GetScans, {tableName}[{partitionKeyName}, {orderId}] has value, returning {scansLeft}",
+                tableClient.Name, PartitionKeyName, androidPurchase.OrderId, purchaseInfo.ScansLeft);
             return purchaseInfo.ScansLeft;
         }
         else
         {
-            logger.LogInformation($"In LicenseStore.GetScans, {tableClient.Name}[{PartitionKeyName}, {androidPurchase.OrderId}] not found, returning error");
+            logger.LogInformation("In LicenseStore.GetScans, {tableName}[{partitionKeyName}, {orderId}] not found, returning error",
+                tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
             return -1;
         }
     }
@@ -249,21 +259,25 @@ internal class LicenseStore
             );
         if (purchaseInfoResponse.HasValue)
         {
-            logger.LogError($"In LicenseStore.Record, {tableClient.Name}[{PartitionKeyName}, {androidPurchase.OrderId}] has value, returning error");
+            logger.LogError("In LicenseStore.Record, {tableName}[{partitionKeyName}, {orderId}] has value, returning error",
+                tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
             return false;
         }
 
-        logger.LogInformation($"In LicenseStore.Record, {tableClient.Name}[{PartitionKeyName}, {androidPurchase.OrderId}] does not exist");
+        logger.LogInformation("In LicenseStore.Record, {tableName}[{partitionKeyName}, {orderId}] does not exist",
+            tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
 
         // The PurchaseToken should not be in use yet, make sure that is so to prevent token reuse
         bool alreadyInUse = tableClient.QueryAsync<PurchaseInfo>(r => r.PurchaseToken.Equals(androidPurchase.PurchaseToken)).ToBlockingEnumerable().Any();
         if (alreadyInUse)
         {
-            logger.LogError($"In LicenseStore.Record, {androidPurchase.PurchaseToken}] is already used, so we cannot add the license");
+            logger.LogError("In LicenseStore.Record, {purchaseToken}] is already used, so we cannot add the license",
+                androidPurchase.PurchaseToken);
             return false;
         }
 
-        logger.LogInformation($"In LicenseStore.Record, {androidPurchase.PurchaseToken}] is unknown to us, so we can add the license");
+        logger.LogInformation("In LicenseStore.Record, {purchaseToken}] is unknown to us, so we can add the license",
+            androidPurchase.PurchaseToken);
 
         // Create a new entry
         PurchaseInfo purchaseInfo = new()
@@ -327,7 +341,7 @@ internal class LicenseStore
     {
         ArgumentException.ThrowIfNullOrEmpty(orderId);
 
-        logger.LogInformation($"In DecrementScans, orderId = {orderId}");
+        logger.LogInformation("In DecrementScans, orderId = {orderId}", orderId);
 
         NullableResponse<PurchaseInfo> purchaseInfoResponse = await tableClient.GetEntityIfExistsAsync<PurchaseInfo>(
             rowKey: orderId,
@@ -353,7 +367,7 @@ internal class LicenseStore
     {
         ArgumentException.ThrowIfNullOrEmpty(orderId);
 
-        logger.LogInformation($"In UpdateTimeUsed, orderId = {orderId}");
+        logger.LogInformation("In UpdateTimeUsed, orderId = {orderId}", orderId);
 
         NullableResponse<PurchaseInfo> purchaseInfoResponse = await tableClient.GetEntityIfExistsAsync<PurchaseInfo>(
             rowKey: orderId,

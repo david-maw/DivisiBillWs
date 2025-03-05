@@ -74,7 +74,7 @@ internal class Authorization
               && PlayStore.VerifyPurchase(logger, androidPurchase, isSubscription: androidPurchase.ProductId.EndsWith(".subscription"))) // See if the play store is happy with it
             return true;
         else
-            logger.LogError("In GetIsAuthorizedAsync, error licenseStore.GetScans returned " + i);
+            logger.LogError("In GetIsAuthorizedAsync, error licenseStore.GetScans returned {Scans}", i);
         return false;
     }
 
@@ -103,7 +103,7 @@ internal class Authorization
                 }
                 catch (Exception ex)
                 {
-                    loggerParam.LogError(ex, "In ProLicenseFromRequest, exception deserializing product from header");
+                    loggerParam.LogError(ex, "In ProLicenseFromRequest, exception deserializing product from header: {Message}", ex.Message);
                 }
             }
         }
@@ -135,7 +135,7 @@ internal class Authorization
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "In GetIsVerified, exception deserializing product");
+            logger.LogError(ex, "In GetIsVerified, exception deserializing product: {Message}", ex.Message);
             androidPurchase = null;
         }
 

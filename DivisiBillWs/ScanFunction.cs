@@ -57,7 +57,7 @@ public class ScanFunction
         if (string.IsNullOrWhiteSpace(option))
             logger.LogInformation("In 'scan', option is null");
         else
-            logger.LogInformation("In 'scan', option = " + option);
+            logger.LogInformation("In 'scan', option = {Option}", option);
         // Now do the actual scanning, or fake it
         switch (option)
         {
