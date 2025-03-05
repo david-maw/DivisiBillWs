@@ -37,8 +37,8 @@ public class VenueListFunction
         Task<IActionResult> actionResult = httpRequest.Method switch
         {
             "PUT" => storage.PutAsync(httpRequest, userKey, id),
-            "GET" => storage.GetAsync(httpRequest, userKey, id),
-            "DELETE" => storage.DeleteAsync(httpRequest, userKey, id),
+            "GET" => storage.GetAsync(userKey, id),
+            "DELETE" => storage.DeleteAsync(userKey, id),
             _ => throw new ApplicationException($"Unknown HTTP method '{httpRequest.Method}'")
         };
 

@@ -20,19 +20,12 @@ internal class DataStore<T> where T : StorageClass, new()
 #else
         "DivisiBill";
 #endif
-    private class EnumeratedDataItem
+    private class EnumeratedDataItem(string name, long dataLength, string data, string? summary = null)
     {
-        public EnumeratedDataItem(string name, long dataLength, string data, string? summary = null)
-        {
-            Name = name;
-            DataLength = dataLength;
-            Data = data;
-            Summary = summary;
-        }
-        public string Name { get; set; } = default!;
-        public string Data { get; set; } = default!;
-        public long DataLength { get; set; } = default!;
-        public string? Summary { get; set; } = default!;
+        public string Name { get; set; } = name;
+        public string Data { get; set; } = data;
+        public long DataLength { get; set; } = dataLength;
+        public string? Summary { get; set; } = summary;
     }
     private class DataFormat : ITableEntity
     {
@@ -69,7 +62,8 @@ internal class DataStore<T> where T : StorageClass, new()
     #region Interface Methods
     public async Task<IActionResult> PutAsync(HttpRequest httpRequest, string userKey, string dataName)
     {
-        logger.LogInformation($"In DataStore.PutAsync, upsert data to {tableClient.Name}[{userKey}, {dataName}({dataName.Invert()})]");
+        const string logMessageTemplate = "In DataStore.PutAsync, upsert data to {TableName}[{UserKey}, {DataName}({InvertedDataName})]";
+        logger.LogInformation(logMessageTemplate, tableClient.Name, userKey, dataName, dataName.Invert());
 
         if (!dataName.IsValidName())
             return new BadRequestResult();
@@ -98,31 +92,35 @@ internal class DataStore<T> where T : StorageClass, new()
         var addEntityResponse = await tableClient.UpsertEntityAsync(data);
         return addEntityResponse.IsError ? new BadRequestResult() : new OkResult();
     }
-    public async Task<IActionResult> GetAsync(HttpRequest httpRequest, string userKey, string dataName)
+    public async Task<IActionResult> GetAsync(string userKey, string dataName)
     {
-        logger.LogInformation($"In DataStore.GetAsync, retrieve data from {tableClient.Name}[{userKey}, {dataName}({dataName.Invert()})]");
+        const string logMessageTemplate = "In DataStore.GetAsync, retrieve data from {TableName}[{UserKey}, {DataName}({InvertedDataName})]";
+        logger.LogInformation(logMessageTemplate, tableClient.Name, userKey, dataName, dataName.Invert());
         if (!dataName.IsValidName())
         {
-            logger.LogError($"In DataStore.GetAsync, invalid name '{dataName}'");
+            const string invalidNameLogMessage = "In DataStore.GetAsync, invalid name '{DataName}'";
+            logger.LogError(invalidNameLogMessage, dataName);
             return new BadRequestResult();
         }
-        logger.LogInformation($"In DataStore.GetAsync, '{dataName}' was a legal data name");
+        logger.LogInformation("In DataStore.GetAsync, {DataName} was a legal data name", dataName);
         // Get data for named entry in specific Order
         var data = await tableClient.GetEntityIfExistsAsync<DataFormat>(userKey, dataName.Invert());
         if (data.HasValue)
         {
-            logger.LogInformation($"In DataStore.GetAsync, got data, length = {data!.Value!.DataLength}");
+            logger.LogInformation("In DataStore.GetAsync, got data, length = {DataLength}", data!.Value!.DataLength);
             return new OkObjectResult(data!.Value!.Data);
         }
         else
         {
-            logger.LogError($"In DataStore.GetAsync, no data found");
+            const string noDataFoundLogMessage = "In DataStore.GetAsync, no data found";
+            logger.LogError(noDataFoundLogMessage);
             return new BadRequestResult();
         }
     }
-    public async Task<IActionResult> DeleteAsync(HttpRequest httpRequest, string userKey, string dataName)
+    public async Task<IActionResult> DeleteAsync(string userKey, string dataName)
     {
-        logger.LogInformation($"In DataStore.Delete, delete data at {tableClient.Name}[{userKey}, {dataName}({dataName.Invert()})]");
+        const string logMessageTemplate = "In DataStore.Delete, delete data at {TableName}[{UserKey}, {DataName}({InvertedDataName})]";
+        logger.LogInformation(logMessageTemplate, tableClient.Name, userKey, dataName, dataName.Invert());
         if (!dataName.IsValidName())
             return new BadRequestResult();
         // Delete Entry
@@ -150,7 +148,8 @@ internal class DataStore<T> where T : StorageClass, new()
         if (string.IsNullOrWhiteSpace(topString) || !int.TryParse(topString, out int top) || top > MaxItems || top < 1)
             return new BadRequestResult();
 
-        logger.LogInformation($"In DataStore.Enumerate, enumerate data in {tableClient.Name}, before = '{before}'");
+        const string logMessageTemplate = "In DataStore.Enumerate, enumerate data in {TableName}, before = '{Before}'";
+        logger.LogInformation(logMessageTemplate, tableClient.Name, before);
         string query = $"PartitionKey eq '{userKey}'";
         if (!string.IsNullOrWhiteSpace(before))
             query += " and RowKey gt '" + before.Invert() + "'";

@@ -16,7 +16,6 @@ public class MealFunction
         storage = new(logger, licenseStore);
     }
 
-
     /// <summary>
     /// CRUD for a single meal. Beware, according to https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference?tabs=blob#parallel-execution
     /// a the function code may be simultaneously executed on multiple threads.
@@ -28,19 +27,21 @@ public class MealFunction
     public async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "get", "put", "delete",
         Route = "meal/{id}")] HttpRequest httpRequest, string id)
     {
-        logger.LogInformation($"MealFunction HTTP trigger function processing a {httpRequest.Method} request for id {id}");
-        string? userKey = httpRequest.HttpContext.Items["userKey"] as string;
+        logger.LogInformation("MealFunction HTTP trigger function processing a {Method} request for ID {Id}", httpRequest.Method, id);
+        string userKey = httpRequest.HttpContext.Items["userKey"] as string
+            ?? throw new NullReferenceException("userKey");
         // Already authorized, so call the appropriate function
         Task<IActionResult> actionResult = httpRequest.Method switch
         {
             "PUT" => storage.PutAsync(httpRequest, userKey, id),
-            "GET" => storage.GetAsync(httpRequest, userKey, id),
-            "DELETE" => storage.DeleteAsync(httpRequest, userKey, id),
+            "GET" => storage.GetAsync(userKey, id),
+            "DELETE" => storage.DeleteAsync(userKey, id),
             _ => throw new ArgumentOutOfRangeException(httpRequest.Method),
         };
 
         return await actionResult;
     }
+
     [Function("Meals")]
     public async Task<IActionResult> Enumerate([HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequest httpRequest)
     {
