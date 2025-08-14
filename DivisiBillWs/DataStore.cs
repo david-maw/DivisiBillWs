@@ -1,5 +1,6 @@
 ﻿using Azure;
 using Azure.Data.Tables;
+using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
@@ -20,12 +21,13 @@ internal class DataStore<T> where T : StorageClass, new()
 #else
         "DivisiBill";
 #endif
-    private class EnumeratedDataItem(string name, long dataLength, string data, string? summary = null)
+    private class EnumeratedDataItem(string name, long dataLength, string data, string? summary = null, bool hasRemoteImage = false)
     {
         public string Name { get; set; } = name;
         public string Data { get; set; } = data;
         public long DataLength { get; set; } = dataLength;
         public string? Summary { get; set; } = summary;
+        public bool HasRemoteImage { get; set; } = hasRemoteImage; // This will be set to true if the image exists in blob storage
     }
     private class DataFormat : ITableEntity
     {
@@ -125,9 +127,24 @@ internal class DataStore<T> where T : StorageClass, new()
             return new BadRequestResult();
         // Delete Entry
         var deleteResult = await tableClient.DeleteEntityAsync(userKey, dataName.Invert());
-        return deleteResult.IsError
-            ? new NotFoundResult()
-            : new OkResult();
+        if (deleteResult.IsError)
+            return new NotFoundResult();
+        else
+        {
+            // Now delete any accompanying image
+            var imagesBlobContainer = new BlobContainerClient(connectionString, "images");
+            var deleteBlob = imagesBlobContainer.GetBlobClient(userKey + "/" + dataName + ".jpg");
+            try
+            {
+                await deleteBlob.DeleteIfExistsAsync();
+            }
+            catch (RequestFailedException)
+            {
+                return new StatusCodeResult(StatusCodes.Status500InternalServerError);
+                throw;
+            }
+            return new OkResult();
+        }
     }
     public async Task<IActionResult> EnumerateAsync(HttpRequest httpRequest)
     {
@@ -162,14 +179,25 @@ internal class DataStore<T> where T : StorageClass, new()
             return new BadRequestResult();
         else
         {
-            int count = 0;
+            // We have a list, we may need to see if they have corresponding images
+            string? connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
+            BlobContainerClient? imagesBlobContainer = null;
 
+            if (storageClass.CheckImage)
+            {
+                imagesBlobContainer = new BlobContainerClient(connectionString, "images");
+                await imagesBlobContainer.CreateIfNotExistsAsync();
+            }
+
+            int count = 0;
             var responseList = new List<EnumeratedDataItem>();
 
             await foreach (var item in returnedPages)
             {
+                BlobClient? blobClient = imagesBlobContainer?.GetBlobClient(userKey + "/" + item.RowKey.Invert() + ".jpg");
                 responseList.Add(new EnumeratedDataItem(item.RowKey.Invert(), item.DataLength, item.Data,
-                    storageClass.UseSummaryField ? item.Summary : null));
+                    storageClass.UseSummaryField ? item.Summary : null,
+                    blobClient is not null ? await blobClient.ExistsAsync() : false));
                 if (++count >= top) break;
             }
             return new JsonResult(responseList, new JsonSerializerOptions()

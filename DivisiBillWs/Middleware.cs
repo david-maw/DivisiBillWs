@@ -98,21 +98,25 @@ public class AuthenticationMiddleware : HttpTriggerMiddlewareBase
             string? userKey = await authorization.GetAuthorizedUserKeyAsync(httpContext.Request);
             if (userKey == null)
             {
-                logger.LogError("In AuthenticateMiddleware for {FunctionName} authorization failed, returning BadRequest", functionName);
+                logger.LogError("In AuthenticateMiddleware for {FunctionName}, DivisiBill authorization failed, returning BadRequest", functionName);
                 httpContext.Response.StatusCode = (int)HttpStatusCode.BadRequest;
                 return;
             }
             else
             {
                 httpContext.Items["userKey"] = userKey;
+                // Check to see if the token has expired, or is about to, so you can send a new one back to the caller if necessary
                 string? token = licenseStore.GetTokenIfNew(userKey);
                 if (token != null)
-                { // Add the token to the response headers
+                { // The token has been updated, so add it to the response headers so the caller can use it next time they need to call us
                     logger.LogInformation("In AuthenticationMiddleware, called licenseStore.GetTokenIfNew, returned {TokenStatus}", token is null ? "null" : "value");
                     httpContext.Response.Headers[Authorization.TokenHeaderName] = token;
                 }
+                logger.LogInformation("In AuthenticateMiddleware for {FunctionName}, DivisiBill authorization succeeded", functionName);
             }
         }
+        else
+            logger.LogInformation("In AuthenticateMiddleware for {FunctionName}, DivisiBill authorization not required", functionName);
         await next(context);
     }
 }

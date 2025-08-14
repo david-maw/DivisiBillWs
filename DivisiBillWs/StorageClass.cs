@@ -7,6 +7,7 @@ public class StorageClass
 {
     public string TableName = "";
     public bool UseSummaryField = false;
+    public bool CheckImage = false;
 }
 
 internal class MealStorage : StorageClass
@@ -15,6 +16,7 @@ internal class MealStorage : StorageClass
     {
         TableName = "Meal";
         UseSummaryField = true;
+        CheckImage = true; // Meals may have images, so we need to check if they are present
     }
 }
 internal class VenueListStorage : StorageClass
