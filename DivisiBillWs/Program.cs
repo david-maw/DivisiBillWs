@@ -1,4 +1,6 @@
+using Azure.Storage.Blobs;
 using DivisiBillWs;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Sentry.Azure.Functions.Worker;
 
@@ -23,6 +25,11 @@ var host = new HostBuilder()
                 //    // We recommend adjusting this value in production.
                 //    options.ProfilesSampleRate = 1.0;
             });
+        builder.Services.AddSingleton(provider =>
+        {
+            var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
+            return new BlobContainerClient(connectionString, "images");
+        });
     })
     .Build();
 

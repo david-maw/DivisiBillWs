@@ -8,27 +8,25 @@ namespace DivisiBillWs;
 public class FileFunction
 {
     private readonly ILogger<FileFunction> _logger;
+    private readonly BlobContainerClient imagesBlobContainer;
 
-    public FileFunction(ILogger<FileFunction> logger)
+    public FileFunction(ILogger<FileFunction> logger, BlobContainerClient imagesBlobContainerParam)
     {
         _logger = logger;
+        imagesBlobContainer = imagesBlobContainerParam;
     }
 
 
     [Function("file")]
-    public static async Task<IActionResult> Run(
+    public async Task<IActionResult> Run(
         [HttpTrigger(AuthorizationLevel.Function, "post", "get", "delete", Route = "file/{fileName?}")] HttpRequest httpRequest,
         string fileName)
     {
-        string? connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
-
         string? userKey = httpRequest.HttpContext.Items["userKey"] as string;
 #if DEBUG
         if (string.IsNullOrEmpty(userKey))
             userKey = "no-userKey-provided---so-use-this-fake-temporarily";
 #endif
-        var imagesBlobContainer = new BlobContainerClient(connectionString, "images");
-
         async Task<CopyStatus> CopyBlobToDeletedAsync(BlobClient sourceBlob)
         {
             var deletedBlob = imagesBlobContainer.GetBlobClient("deleted/" + sourceBlob.Name);
@@ -111,7 +109,7 @@ public class FileFunction
     }
 
     [Function("files")]
-    public static async Task<IActionResult> ListFiles(
+    public async Task<IActionResult> ListFiles(
         [HttpTrigger(AuthorizationLevel.Function, "get", Route = "files")] HttpRequest httpRequest)
     {
         string? connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
@@ -122,12 +120,11 @@ public class FileFunction
             userKey = "no-userKey-provided---so-use-this-fake-temporarily";
 #endif
 
-        var container = new BlobContainerClient(connectionString, "images");
-        await container.CreateIfNotExistsAsync();
+        await imagesBlobContainer.CreateIfNotExistsAsync();
 
         int prefixLength = userKey.Length + 1; // The "+1" is for the delimiter "/"
         var list = new List<object>();
-        await foreach (var blob in container.GetBlobsAsync(prefix: userKey + "/"))
+        await foreach (var blob in imagesBlobContainer.GetBlobsAsync(prefix: userKey + "/"))
         {
             list.Add(new
             {
