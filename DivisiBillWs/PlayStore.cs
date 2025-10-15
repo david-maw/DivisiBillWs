@@ -34,8 +34,12 @@ internal class PlayStore
             string subscriptionState = string.Empty;
 
 #if DEBUG // permit a test orderId
-            if (androidPurchase.OrderId != null && androidPurchase.OrderId.Equals("Fake-OrderId"))
+            if (androidPurchase.OrderId != null && androidPurchase.OrderId.Equals("GPA.3349-9523-9124-10936"))
+            {
                 isPermittedTestOrderId = true;
+                verifiedOrderId = androidPurchase.OrderId;
+                verifiedAcknowledgementState = 1;
+            }
 #endif
             if (isSubscription)
             {
