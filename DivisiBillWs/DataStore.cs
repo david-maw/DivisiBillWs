@@ -3,7 +3,6 @@ using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Primitives;
 using System.Text.Json;
 
 namespace DivisiBillWs;
@@ -21,13 +20,14 @@ internal class DataStore<T> where T : StorageClass, new()
 #else
         "DivisiBill";
 #endif
-    private class EnumeratedDataItem(string name, long dataLength, string data, string? summary = null, bool hasRemoteImage = false)
+    private class EnumeratedDataItem(string name, long dataLength, string data, bool isEncrypted, string? summary = null, bool hasRemoteImage = false)
     {
         public string Name { get; set; } = name;
         public string Data { get; set; } = data;
         public long DataLength { get; set; } = dataLength;
         public string? Summary { get; set; } = summary;
         public bool HasRemoteImage { get; set; } = hasRemoteImage; // This will be set to true if the image exists in blob storage
+        public bool IsEncrypted { get; set; } = isEncrypted;
     }
     private class DataFormat : ITableEntity
     {
@@ -35,6 +35,7 @@ internal class DataStore<T> where T : StorageClass, new()
         public string Data { get; set; } = default!;
         public long DataLength { get; set; } = default!;
         public string Summary { get; set; } = default!;
+        public bool IsEncrypted { get; set; } = false;
 
         // Required for ITableEntity
         public string RowKey { get; set; } = default!; // User must provide a value
@@ -64,35 +65,71 @@ internal class DataStore<T> where T : StorageClass, new()
     #region Interface Methods
     public async Task<IActionResult> PutAsync(HttpRequest httpRequest, string userKey, string dataName)
     {
-        const string logMessageTemplate = "In DataStore.PutAsync, upsert data to {TableName}[{UserKey}, {DataName}({InvertedDataName})]";
+        const string logMessageTemplate = "In DataStore.PutAsync, upsert data to {TableName}[{UserKey}, {DataName}({InvertedDataName})";
         logger.LogInformation(logMessageTemplate, tableClient.Name, userKey, dataName, dataName.Invert());
 
         if (!dataName.IsValidName())
             return new BadRequestResult();
         // Get the data stream
-        var forms = await httpRequest.ReadFormAsync();
-        if (!forms.TryGetValue("data", out StringValues stringValues) || stringValues.Count != 1)
+        var formCollection = await httpRequest.ReadFormAsync();
+        // To be a legal message either all fields must be encrypted, or none. An encrypted field is stored as a file form element and a plaintext one as a string form element
+        if (formCollection is null)
+            return new BadRequestObjectResult("A form collection is required");
+        if ((formCollection.Count > 0) == (formCollection.Files.Count > 0))
+        {
+            const string fieldsAndFilesExclusiveMessage = "In DataStore.PutAsync, exactly one of fields and forms may be nonzero";
+            logger.LogError(fieldsAndFilesExclusiveMessage);
+            return new BadRequestObjectResult(fieldsAndFilesExclusiveMessage);
+        }
+        // If there are any files, then all fields must be files
+        bool isEncrypted = formCollection.Files.Count > 0;
+        // Get the data field, which may be either a string or an encrypted file
+        string? dataValue = await GetFormFieldValueAsync("data");
+        if (dataValue is null)
             return new BadRequestResult();
-
-        string mainData = stringValues[0]!;
 
         // Create a new entry
         DataFormat data = new()
         {
             PartitionKey = userKey,
             RowKey = dataName.Invert(),
-            Data = mainData,
-            DataLength = mainData == null ? 0 : mainData.Length
+            Data = dataValue,
+            IsEncrypted = isEncrypted,
+            DataLength = dataValue == null ? 0 : dataValue.Length
         };
+        // Add the optional summary field (only used with meal storage)
         if (storageClass.UseSummaryField)
         {
-            if (!forms.TryGetValue("summary", out stringValues) || stringValues.Count != 1)
+            string? summaryValue = await GetFormFieldValueAsync("summary");
+            if (summaryValue is null)
                 return new BadRequestResult();
-            string summaryData = stringValues[0]!;
-            data.Summary = summaryData;
+            data.Summary = summaryValue;
         }
         var addEntityResponse = await tableClient.UpsertEntityAsync(data);
         return addEntityResponse.IsError ? new BadRequestResult() : new OkResult();
+
+        // Local function to return a string representing a named form element which may be either from an encrypted 'file' or a string
+        async Task<string?> GetFormFieldValueAsync(string? formName)
+        {
+            ArgumentNullException.ThrowIfNullOrWhiteSpace(formName);
+            if (isEncrypted)
+            {
+                IFormFile? formFile = formCollection.Files[formName];
+                if (formFile is null || formFile.Length == 0)
+                    return null;
+                using var stream = new MemoryStream();
+                await formFile.CopyToAsync(stream);
+                byte[] encryptedBlob = stream.ToArray();
+                return Convert.ToBase64String(encryptedBlob);
+            }
+            else // Just return plain text, this is compatible with pre-encryption clients
+            {
+                var summary = formCollection[formName];
+                if (summary.Count != 1)
+                    return null;
+                return summary[0];
+            }
+        }
     }
     public async Task<IActionResult> GetAsync(string userKey, string dataName)
     {
@@ -107,10 +144,12 @@ internal class DataStore<T> where T : StorageClass, new()
         logger.LogInformation("In DataStore.GetAsync, {DataName} was a legal data name", dataName);
         // Get data for named entry in specific Order
         var data = await tableClient.GetEntityIfExistsAsync<DataFormat>(userKey, dataName.Invert());
-        if (data.HasValue)
+        if (data.Value is not null)
         {
-            logger.LogInformation("In DataStore.GetAsync, got data, length = {DataLength}", data!.Value!.DataLength);
-            return new OkObjectResult(data!.Value!.Data);
+            logger.LogInformation("In DataStore.GetAsync, got data, length = {DataLength}, encrypted = {IsEncrypted}", data.Value.DataLength, data.Value.IsEncrypted);
+            return data.Value.IsEncrypted
+                ? new FileContentResult(Convert.FromBase64String(data.Value.Data), "application/octet-stream")
+                : new OkObjectResult(data.Value.Data);
         }
         else
         {
@@ -134,9 +173,12 @@ internal class DataStore<T> where T : StorageClass, new()
             // Now delete any accompanying image
             var imagesBlobContainer = new BlobContainerClient(connectionString, "images");
             var deleteBlob = imagesBlobContainer.GetBlobClient(userKey + "/" + dataName + ".jpg");
+            var deleteEncryptedBlob = imagesBlobContainer.GetBlobClient(userKey + "/" + dataName + ".jpg.enc");
             try
             {
+                // At most one of these files should be present, but it's cheaper to delete them both than to query then delete
                 await deleteBlob.DeleteIfExistsAsync();
+                await deleteEncryptedBlob.DeleteIfExistsAsync();
             }
             catch (RequestFailedException)
             {
@@ -171,7 +213,7 @@ internal class DataStore<T> where T : StorageClass, new()
         if (!string.IsNullOrWhiteSpace(before))
             query += " and RowKey gt '" + before.Invert() + "'";
         // Determine which fieldNames to return
-        List<string> fieldNames = ["RowKey", "DataLength"];
+        List<string> fieldNames = ["RowKey", "DataLength", "IsEncrypted"]; // Note that "Data" is not included
         if (storageClass.UseSummaryField) fieldNames.Add("Summary");
         // Find entries
         var returnedPages = tableClient.QueryAsync<DataFormat>(query, null, fieldNames);
@@ -194,8 +236,9 @@ internal class DataStore<T> where T : StorageClass, new()
 
             await foreach (var item in returnedPages)
             {
-                BlobClient? blobClient = imagesBlobContainer?.GetBlobClient(userKey + "/" + item.RowKey.Invert() + ".jpg");
-                responseList.Add(new EnumeratedDataItem(item.RowKey.Invert(), item.DataLength, item.Data,
+                string imageBlobName = userKey + "/" + item.RowKey.Invert() + (item.IsEncrypted ? ".jpg.enc" : ".jpg");
+                BlobClient? blobClient = imagesBlobContainer?.GetBlobClient(imageBlobName);
+                responseList.Add(new EnumeratedDataItem(item.RowKey.Invert(), item.DataLength, item.Data, item.IsEncrypted,
                     storageClass.UseSummaryField ? item.Summary : null,
                     blobClient is not null ? await blobClient.ExistsAsync() : false));
                 if (++count >= top) break;
