@@ -95,7 +95,7 @@ public class FileFunction
                     await uploadBlob.UploadAsync(uploadStream, headers);
                     // Delete the alternate blob if there is one
                     string alternateBlobName = blobName.EndsWith(".enc") ? blobName[..^4] : blobName + ".enc";
-                    var deleteAlternateBlob = imagesBlobContainer.GetBlobClient(userKey + "/" + fileName);
+                    var deleteAlternateBlob = imagesBlobContainer.GetBlobClient(userKey + "/" + alternateBlobName);
                     await deleteAlternateBlob.DeleteIfExistsAsync();
                     return new OkObjectResult($"Uploaded {blobName}");
                 }
