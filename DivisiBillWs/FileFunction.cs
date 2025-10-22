@@ -58,7 +58,7 @@ public class FileFunction
 
         // Beginning of function code
 
-        logger.LogInformation($"'file' HTTP trigger function processing a {httpRequest.Method} request for id {fileName}");
+        logger.LogInformation("'file' function processing a {Method} request for id {FileName}", httpRequest.Method, fileName);
 
         await imagesBlobContainer.CreateIfNotExistsAsync();
 
@@ -71,17 +71,16 @@ public class FileFunction
                         return new BadRequestObjectResult("No file uploaded.");
 
                     string blobName = formFile.FileName;
-                    logger.LogInformation($"'file' HTTP trigger function processing a {httpRequest.Method} request for form FileName {blobName}");
+                    if (string.IsNullOrWhiteSpace(blobName))
+                        return new UnprocessableEntityObjectResult("No file name provided.");
+                    logger.LogInformation("'file' function POST request is actually for form FileName {FileName}", blobName);
                     var uploadBlob = imagesBlobContainer.GetBlobClient(userKey + "/" + blobName);
                     if (await uploadBlob.ExistsAsync())
                     {
                         // A blob of that name already exists so copy it with a "deleted" prefix, removing any blob that is already deleted
                         var copyStatus = await CopyBlobToDeletedAsync(uploadBlob);
                         if (copyStatus != CopyStatus.Success)
-                            return new ObjectResult($"Copy failed with status {copyStatus}.")
-                            {
-                                StatusCode = StatusCodes.Status500InternalServerError
-                            };
+                            return Utility.CreateFailedResult($"Copy deleted failed with status {copyStatus}.");
                     }
                     using var uploadStream = formFile.OpenReadStream();
 
@@ -92,12 +91,17 @@ public class FileFunction
                     };
 
                     // Upload with headers
-                    await uploadBlob.UploadAsync(uploadStream, headers);
-                    // Delete the alternate blob if there is one
-                    string alternateBlobName = blobName.EndsWith(".enc") ? blobName[..^4] : blobName + ".enc";
-                    var deleteAlternateBlob = imagesBlobContainer.GetBlobClient(userKey + "/" + alternateBlobName);
-                    await deleteAlternateBlob.DeleteIfExistsAsync();
-                    return new OkObjectResult($"Uploaded {blobName}");
+                    var uploadResult = await uploadBlob.UploadAsync(uploadStream, headers);
+                    if (uploadResult.GetRawResponse().IsError)
+                        return Utility.CreateFailedResult("Upload failed.");
+                    else
+                    {
+                        // Delete the alternate blob if there is one
+                        string alternateBlobName = blobName.EndsWith(".enc") ? blobName[..^4] : blobName + ".enc";
+                        var deleteAlternateBlob = imagesBlobContainer.GetBlobClient(userKey + "/" + alternateBlobName);
+                        await deleteAlternateBlob.DeleteIfExistsAsync();
+                        return new OkObjectResult($"Uploaded {blobName}");
+                    }
                 }
             case "GET":
                 if (string.IsNullOrEmpty(fileName))

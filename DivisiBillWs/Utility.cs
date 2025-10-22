@@ -1,4 +1,6 @@
-﻿using System.Text;
+﻿using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using System.Text;
 
 namespace DivisiBillWs;
 
@@ -44,7 +46,7 @@ internal static class Extensions
         return true;
     }
 }
-internal class Utility
+internal static class Utility
 {
 #if DEBUG
     public static readonly bool IsDebug = true; // Not a const so as to avoid "unreachable code" warnings
@@ -72,4 +74,9 @@ internal class Utility
         }
         return randomString.ToString();
     }
+
+    internal static ObjectResult CreateFailedResult
+        (string errorMessage, int statusCode = StatusCodes.Status500InternalServerError)
+        => new(errorMessage) { StatusCode = statusCode };
+
 }
