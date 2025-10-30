@@ -40,6 +40,8 @@ public class FileFunction
         string fileName)
     {
         string? userKey = httpRequest.HttpContext.Items["userKey"] as string;
+        
+        // Local function to copy existing blob to deleted folder
         async Task<CopyStatus> CopyBlobToDeletedAsync(BlobClient sourceBlob)
         {
             var deletedBlob = imagesBlobContainer.GetBlobClient("deleted/" + sourceBlob.Name);
@@ -137,32 +139,70 @@ public class FileFunction
     }
 
     [Function("files")]
-    public async Task<IActionResult> ListFiles(
-        [HttpTrigger(AuthorizationLevel.Function, "get", Route = "files")] HttpRequest httpRequest)
+    public async Task<IActionResult> Files(
+        [HttpTrigger(AuthorizationLevel.Function, "get", "delete", Route = "files")] HttpRequest httpRequest)
     {
         string? connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
-
-        string? userKey = httpRequest.HttpContext.Items["userKey"] as string;
-#if DEBUG
-        if (string.IsNullOrEmpty(userKey))
-            userKey = "no-userKey-provided---so-use-this-fake-temporarily";
-#endif
-
         await imagesBlobContainer.CreateIfNotExistsAsync();
+        if (httpRequest.HttpContext.Items["userKey"] is not string userKey) throw new NullReferenceException(nameof(userKey));
 
-        int prefixLength = userKey.Length + 1; // The "+1" is for the delimiter "/"
-        var list = new List<object>();
-        await foreach (var blob in imagesBlobContainer.GetBlobsAsync(prefix: userKey + "/"))
+        switch (httpRequest.Method.ToUpper())
         {
-            list.Add(new
-            {
-                name = blob.Name.Substring(prefixLength),
-                contentType = blob.Properties.ContentType,
-                size = blob.Properties.ContentLength,
-                lastModified = blob.Properties.LastModified
-            });
-        }
+            case "GET":
+                int prefixLength = userKey.Length + 1; // The "+1" is for the delimiter "/"
+                var list = new List<object>();
+                await foreach (var blob in imagesBlobContainer.GetBlobsAsync(prefix: userKey + "/"))
+                {
+                    list.Add(new
+                    {
+                        name = blob.Name.Substring(prefixLength),
+                        contentType = blob.Properties.ContentType,
+                        size = blob.Properties.ContentLength,
+                        lastModified = blob.Properties.LastModified
+                    });
+                }
 
-        return new OkObjectResult(list);
+                return new OkObjectResult(list);
+
+            case "DELETE":
+                int deleteCount = 0;
+                int failCount = 0;
+                List<Task> deleteTasks = [];
+
+                // Local function to add blob delete tasks for a given prefix
+                async Task AddUserBlobDeleteTasksAsync(string prefix)
+                {
+                    await foreach (var blobItem in imagesBlobContainer.GetBlobsAsync(prefix: prefix + "/"))
+                    {
+                        var blobClient = imagesBlobContainer.GetBlobClient(blobItem.Name);
+                        deleteTasks.Add(Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await blobClient.DeleteIfExistsAsync();
+                                Interlocked.Increment(ref deleteCount);
+                            }
+                            catch
+                            {
+                                Interlocked.Increment(ref failCount);
+                            }
+                        }));
+                    }
+                }
+
+                // First delete all the active files for this user
+                await AddUserBlobDeleteTasksAsync(userKey);
+                // Now delete all the deleted files for this user
+                await AddUserBlobDeleteTasksAsync("deleted/" + userKey);
+                // Wait for all deletions to complete
+                await Task.WhenAll(deleteTasks);
+                // Return result
+                return failCount > 0
+                    ? Utility.CreateFailedResult($"Failed to delete {failCount} files, deleted {deleteCount} files.")
+                    : new OkObjectResult($"Deleted {deleteCount} files.");
+
+            default:
+                return new BadRequestObjectResult("Unsupported HTTP method. Use GET, or DELETE.");
+        } // switch
     }
 }
