@@ -251,5 +251,39 @@ internal class DataStore<T> where T : StorageClass, new()
             });
         }
     }
+    public async Task<IActionResult> DeleteAllAsync(HttpRequest httpRequest)
+    {
+        string? userKey = httpRequest.HttpContext.Items["userKey"] as string;
+
+        const string logMessageTemplate = "In DataStore.DeleteAllAsync, delete data in {TableName}";
+        logger.LogInformation(logMessageTemplate, tableClient.Name);
+
+        var deleteTasks = new List<Task>();
+
+        int deleteCount = 0;
+        int failCount = 0;
+
+        await foreach (var entity in tableClient.QueryAsync<TableEntity>(e => e.PartitionKey == userKey))
+        {
+            deleteTasks.Add(Task.Run(async () =>
+            {
+                try
+                {
+                    await tableClient.DeleteEntityAsync(entity.PartitionKey, entity.RowKey);
+                    Interlocked.Increment(ref deleteCount);
+                }
+                catch
+                {
+                    Interlocked.Increment(ref failCount);
+                }
+            }));
+        }
+
+        await Task.WhenAll(deleteTasks);
+        logger.LogInformation("In DataStore.DeleteAllAsync, deleted {successes} in {TableName}, failed to delete {failures}", deleteCount, tableClient.Name, failCount);
+        return failCount > 0
+            ? Utility.CreateFailedResult($"Failed to delete {failCount} items, deleted {deleteCount}.")
+            : new OkObjectResult($"Deleted {deleteCount} items.");
+    }
     #endregion
 }

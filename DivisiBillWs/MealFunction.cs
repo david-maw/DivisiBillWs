@@ -43,9 +43,15 @@ public class MealFunction
     }
 
     [Function("Meals")]
-    public async Task<IActionResult> Enumerate([HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequest httpRequest)
+    public async Task<IActionResult> Enumerate([HttpTrigger(AuthorizationLevel.Function, "get", "delete")] HttpRequest httpRequest)
     {
-        logger.LogInformation("Meals function processing a request.");
-        return await storage.EnumerateAsync(httpRequest);
+        logger.LogInformation("Meals function processing a {method} request.", httpRequest.Method);
+        Task<IActionResult> actionResult = httpRequest.Method switch
+        {
+            "GET" => storage.EnumerateAsync(httpRequest),
+            "DELETE" => storage.DeleteAllAsync(httpRequest),
+            _ => throw new ApplicationException($"Unknown HTTP method '{httpRequest.Method}'")
+        };
+        return await actionResult;
     }
 }
