@@ -1,19 +1,43 @@
 ﻿using Google.Apis.AndroidPublisher.v3.Data;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace DivisiBillWs;
 internal class PlayStore
 {
+    public static bool VerifyDivisiBillPurchaseSignature(string signedData, string signature)
+    {
+        const string divisiBillPublicKeyBase64 = @"MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAgfNwFZUg8fTc0Qd0PizHh+lZyjYJQDx2IH9XXZDE1X" +
+        "/aTAp9s5offgtVYkaepHn17UAAHx8d4W6IVUSbtNlAiKxudmEo2tjoSYp6nnSlWRCs7Tzi6t91aMPmgaWUyx9/MCWFj3SRJz9cWhb84JiFDX3UecKKFUyOo+7NzeCvHOCvn" +
+        "5JHe+kXMB+wxiYYKcy/vPsOuKlfxkf3GRvWsYJPRLxjB4hWm17HX+vT1AWXZxrLFI1iNiF0WFhYU72zunM7JAla6hUcHag/nFZYHfZxzjAf8YlFCMUbqPTZkINehRHDiM8lg" +
+        "brHR5Df32rw+m3cLWKqd5wWqu4yr9+iOHdXzwIDAQAB";
+
+        try
+        {
+            byte[] keyBytes = Convert.FromBase64String(divisiBillPublicKeyBase64);
+            using var rsa = RSA.Create();
+            rsa.ImportSubjectPublicKeyInfo(keyBytes, out _);
+
+            byte[] dataBytes = Encoding.UTF8.GetBytes(signedData);
+            byte[] signatureBytes = Convert.FromBase64String(signature);
+
+            return rsa.VerifyData(dataBytes, signatureBytes, HashAlgorithmName.SHA1, RSASignaturePadding.Pkcs1);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>
-    /// Check whether a purchase is recognized by the Play Store (verifying the ObfuscatedAccountId) and that it is known by us
-    /// If it is otherwise good, store it if it is not known by us so it will be known in future.
+    /// Check whether a purchase is recognized by the Play Store and is currently active.
     /// </summary>
     /// <param name="logger">An ILogger instance to use for logging</param>
     /// <param name="androidPurchase">The purchase object to validate</param>
-    /// <param name="isSubscription">Whether the purchase is a subscription or a license</param>
+    /// 
     /// <returns></returns>
-    internal static bool VerifyPurchase(ILogger logger, AndroidPurchase? androidPurchase, bool isSubscription)
+    internal static bool VerifyPurchase(ILogger logger, AndroidPurchase? androidPurchase)
     {
-        bool isPermittedTestOrderId = false;
         if (androidPurchase == null)
             logger.LogError("In VerifyPurchase, could not deserialize a purchase");
         else if (string.IsNullOrEmpty(androidPurchase.PackageName))
@@ -32,39 +56,35 @@ internal class PlayStore
             string? verifiedObfuscatedExternalAccountId = null;
             int? verifiedAcknowledgementState = null;
             string subscriptionState = string.Empty;
+            bool isSubscription = androidPurchase.IsSubscription;
 
-#if DEBUG // permit a test orderId
-            if (androidPurchase.OrderId != null && androidPurchase.OrderId.Equals("GPA.3349-9523-9124-10936"))
-            {
-                isPermittedTestOrderId = true;
-                verifiedOrderId = androidPurchase.OrderId;
-                verifiedAcknowledgementState = 1;
-            }
-#endif
+            // There are a couple of reserved test order IDs that can be used to simulate purchases without calling the Play Store
+            bool doNotCallPlayStore = Utility.IsDebug && androidPurchase.OrderId is "GPA.3334-3035-7547-40873" or "GPA.3332-0658-5128-80451";
             if (isSubscription)
             {
                 SubscriptionPurchaseV2? verifiedSubscriptionPurchase = null;
                 try
                 {
-                    if (isPermittedTestOrderId)
+                    if (doNotCallPlayStore)
                     {
                         verifiedSubscriptionPurchase = new()
                         {
                             LatestOrderId = androidPurchase.OrderId,
-                            AcknowledgementState = "ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED"
+                            AcknowledgementState = "ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED",
+                            SubscriptionState = "SUBSCRIPTION_STATE_ACTIVE"
                         };
+                        verifiedObfuscatedExternalAccountId = androidPurchase.ObfuscatedAccountId;
                     }
                     else
                     {
-                        verifiedSubscriptionPurchase = LicenseCheck.GetSubscriptionPurchase(
-                            androidPurchase.PackageName, androidPurchase.PurchaseToken);
-                        if (verifiedSubscriptionPurchase != null)
-                        {
-                            verifiedOrderId = verifiedSubscriptionPurchase.LatestOrderId;
-                            verifiedAcknowledgementState = verifiedSubscriptionPurchase.AcknowledgementState.Equals("ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED") ? 1 : 0;
-                            verifiedObfuscatedExternalAccountId = verifiedSubscriptionPurchase.ExternalAccountIdentifiers.ObfuscatedExternalAccountId;
-                            subscriptionState = verifiedSubscriptionPurchase.SubscriptionState;
-                        }
+                        verifiedSubscriptionPurchase = LicenseCheck.GetSubscriptionPurchase(androidPurchase.PackageName, androidPurchase.PurchaseToken);
+                        verifiedObfuscatedExternalAccountId = verifiedSubscriptionPurchase?.ExternalAccountIdentifiers.ObfuscatedExternalAccountId;
+                    }
+                    if (verifiedSubscriptionPurchase != null)
+                    {
+                        verifiedOrderId = verifiedSubscriptionPurchase.LatestOrderId;
+                        verifiedAcknowledgementState = verifiedSubscriptionPurchase.AcknowledgementState.Equals("ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED") ? 1 : 0;
+                        subscriptionState = verifiedSubscriptionPurchase.SubscriptionState;
                     }
                 }
                 catch (Exception ex)
@@ -77,25 +97,19 @@ internal class PlayStore
                 ProductPurchase? verifiedPurchase = null;
                 try
                 {
-                    if (isPermittedTestOrderId)
-                    {
-                        verifiedPurchase = new()
+                    verifiedPurchase = doNotCallPlayStore
+                        ? new()
                         {
-                            ProductId = androidPurchase.ProductId,
                             OrderId = androidPurchase.OrderId,
-                            AcknowledgementState = 1
-                        };
-                    }
-                    else
-                    {
-                        verifiedPurchase = LicenseCheck.GetProductPurchase(
-                            androidPurchase.PackageName, androidPurchase.ProductId, androidPurchase.PurchaseToken);
-                        if (verifiedPurchase != null)
-                        {
-                            verifiedOrderId = verifiedPurchase.OrderId;
-                            verifiedAcknowledgementState = verifiedPurchase.AcknowledgementState;
-                            verifiedObfuscatedExternalAccountId = verifiedPurchase.ObfuscatedExternalAccountId;
+                            AcknowledgementState = 1,
+                            ObfuscatedExternalAccountId = androidPurchase.ObfuscatedAccountId
                         }
+                        : LicenseCheck.GetProductPurchase(androidPurchase.PackageName, androidPurchase.ProductId, androidPurchase.PurchaseToken);
+                    if (verifiedPurchase != null)
+                    {
+                        verifiedOrderId = verifiedPurchase.OrderId;
+                        verifiedAcknowledgementState = verifiedPurchase.AcknowledgementState;
+                        verifiedObfuscatedExternalAccountId = verifiedPurchase.ObfuscatedExternalAccountId;
                     }
                 }
                 catch (Exception ex)
@@ -103,17 +117,16 @@ internal class PlayStore
                     logger.LogError("In VerifyPurchase, exception calling Google to check purchase: {Message}", ex.Message);
                 }
             }
-            bool sameAccountId = (string.IsNullOrEmpty(verifiedObfuscatedExternalAccountId) && string.IsNullOrEmpty(androidPurchase.ObfuscatedAccountId))
-                || string.Equals(verifiedObfuscatedExternalAccountId, androidPurchase.ObfuscatedAccountId);
+            bool sameAccountId = string.Equals(verifiedObfuscatedExternalAccountId, androidPurchase.ObfuscatedAccountId);
             if (verifiedAcknowledgementState == null || verifiedOrderId == null || !sameAccountId)
                 logger.LogError("In VerifyPurchase, could not verify purchase with Google");
             else
             {
                 if (verifiedOrderId == null)
                     logger.LogError("In VerifyPurchase, purchase.OrderId is null");
-                else if (isPermittedTestOrderId)
+                else if (doNotCallPlayStore)
                 {
-                    logger.LogInformation("In VerifyPurchase, faking test order, not checking license table");
+                    logger.LogInformation("In VerifyPurchase, test order, did not check play store");
                     return true;
                 }
                 else if (isSubscription)

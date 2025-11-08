@@ -82,7 +82,10 @@ public class AuthenticationMiddleware : HttpTriggerMiddlewareBase
 
         bool needsVerification = functionName switch
         {
+            // Note that this effectively makes the API name used in a URL case sensitive which, by default, Azure functions are not
+            // It would be easy enough to code round, but why bother...
             "version" or "scan" or "verify" or "recordpurchase" => false,
+            nameof(VerifyFunction.VerifyAndroidPurchase) or nameof(RecordPurchaseFunction.RecordAndroidPurchase) => false,
             _ => true,
         };
 

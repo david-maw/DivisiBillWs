@@ -199,7 +199,7 @@ internal class DataStore<T> where T : StorageClass, new()
         // Validate 'before'
         if (before != null && !before.IsValidName())
         {
-            logger.LogInformation($"The 'before' specification is unacceptable, returning error");
+            logger.LogError($"The 'before' specification is unacceptable, returning error");
             return new BadRequestResult();
         }
 

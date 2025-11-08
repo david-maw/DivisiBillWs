@@ -33,6 +33,7 @@ internal class LicenseStore
         public DateTimeOffset TimeCreated { get; set; } = DateTime.Now; // Set when creating item
         public string ObfuscatedAccountId { get; set; } = default!;
         public DateTimeOffset TimeUsed { get; set; } = default; // Set when using this license
+        public string Signature { get; set; } = default!;
 
         // Required for ITableEntity
         public string RowKey { get; set; } = default!; // OrderId
@@ -211,32 +212,26 @@ internal class LicenseStore
             rowKey: androidPurchase.OrderId,
             partitionKey: PartitionKeyName
             );
-        if (purchaseInfoResponse.HasValue && purchaseInfoResponse!.Value is PurchaseInfo purchaseInfo
-            && (string.IsNullOrEmpty(purchaseInfo.PurchaseToken) || purchaseInfo.PurchaseToken.Equals(androidPurchase.PurchaseToken)))
+        if (purchaseInfoResponse.HasValue && purchaseInfoResponse?.Value is PurchaseInfo purchaseInfo)
         {
-            if (string.IsNullOrEmpty(purchaseInfo.PurchaseToken))
+            if (purchaseInfo.PurchaseToken.Equals(androidPurchase.PurchaseToken))
             {
-                // The purchase exists but we have not yet recorded a PurchaseToken for it (probably it is old), make sure the PurchaseToken is unique and record it
-                var existingPurchase = tableClient.QueryAsync<PurchaseInfo>(r => r.PurchaseToken.Equals(androidPurchase.PurchaseToken)).ToBlockingEnumerable().FirstOrDefault();
-                if (existingPurchase is not null)
-                {
-                    logger.LogError("In LicenseStore.GetScans, license {partitionKey} is already using PurchaseToken {purchaseToken}, returning error",
-                        existingPurchase.PartitionKey, androidPurchase.PurchaseToken);
-                    return -2;
-                }
-                purchaseInfo.PurchaseToken = androidPurchase.PurchaseToken;
-                purchaseInfo.TimeUsed = DateTime.UtcNow;
-                await tableClient.UpdateEntityAsync(purchaseInfo, purchaseInfo.ETag);
+                logger.LogInformation("In LicenseStore.GetScans, {tableName}[{partitionKeyName}, {orderId}] has value, returning {scansLeft}",
+                    tableClient.Name, PartitionKeyName, androidPurchase.OrderId, purchaseInfo.ScansLeft);
+                return purchaseInfo.ScansLeft;
             }
-            logger.LogInformation("In LicenseStore.GetScans, {tableName}[{partitionKeyName}, {orderId}] has value, returning {scansLeft}",
-                tableClient.Name, PartitionKeyName, androidPurchase.OrderId, purchaseInfo.ScansLeft);
-            return purchaseInfo.ScansLeft;
-        }
+            else
+            {
+                logger.LogError("In LicenseStore.GetScans, {tableName}[{partitionKeyName}, {orderId}] stored purchase token does not match, returning error",
+                    tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
+                return -1;
+            }
+       }
         else
         {
-            logger.LogInformation("In LicenseStore.GetScans, {tableName}[{partitionKeyName}, {orderId}] not found, returning error",
+            logger.LogError("In LicenseStore.GetScans, {tableName}[{partitionKeyName}, {orderId}] not found, returning error",
                 tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
-            return -1;
+            return -1; 
         }
     }
     /// <summary>
@@ -376,5 +371,108 @@ internal class LicenseStore
             return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// <para>Check the purchase validation signature stored is the same as what was sent, or if one is not already
+    /// stored store it for use validating the same purchase sent without a signature in future by calling
+    /// <see cref="VerifyAgainstStoredSignatureAsync"/></para>
+    /// </summary>
+    /// <param name="orderId"></param>
+    /// <param name="signatureB64">Signature encoded in a base64 string</param>
+    /// <returns></returns>
+    public async Task<bool> VerifyOrStoreSignatureAsync(string orderId, string signatureB64)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(orderId);
+        ArgumentException.ThrowIfNullOrEmpty(signatureB64);
+
+        logger.LogInformation("In VerifyOrStoreSignatureAsync, orderId = {orderId}", orderId);
+
+        NullableResponse<PurchaseInfo> purchaseInfoResponse = await tableClient.GetEntityIfExistsAsync<PurchaseInfo>(
+            rowKey: orderId,
+            partitionKey: PartitionKeyName
+            );
+        if (purchaseInfoResponse.Value is PurchaseInfo purchaseInfo)
+        {
+            if (string.IsNullOrWhiteSpace(purchaseInfo.Signature))
+            {
+                logger.LogInformation("In VerifyOrStoreSignatureAsync, {tableName}[{partitionKeyName}, {orderId}] signature is empty, storing incoming signature and returning true",
+                    tableClient.Name, PartitionKeyName, orderId);
+                purchaseInfo.Signature = signatureB64;
+                await tableClient.UpdateEntityAsync(purchaseInfo, purchaseInfo.ETag);
+                return true;
+            }
+            else if (purchaseInfo.Signature.Equals(signatureB64))
+            {
+                logger.LogInformation("In VerifyOrStoreSignatureAsync, {tableName}[{partitionKeyName}, {orderId}] signature matches, returning true",
+                    tableClient.Name, PartitionKeyName, orderId);
+                return true;
+            }
+            else
+            {
+                logger.LogError("In VerifyOrStoreSignatureAsync, {tableName}[{partitionKeyName}, {orderId}] signature does not match, returning false",
+                    tableClient.Name, PartitionKeyName, orderId);
+                return false;
+            }
+        }
+        else
+        {
+            logger.LogError("In VerifyOrStoreSignatureAsync, {tableName}[{partitionKeyName}, {orderId}] not found, returning false",
+                tableClient.Name, PartitionKeyName, orderId);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Verifies whether the provided Android purchase JSON matches the stored signature for the specified order. A signature is always stored
+    /// (or checked) when a license is verified using <see cref="VerifyOrStoreSignatureAsync"/>. Logically you'd think the right place to store a
+    /// signature is when a new license is requested in <see cref="RecordAsync"/>, but this way handles migration.
+    /// </summary>
+    /// <remarks>Returns <see langword="false"/> if the order does not exist or if no signature is stored for
+    /// the order.</remarks>
+    /// <param name="orderId">The unique identifier of the order to verify. Cannot be null or empty.</param>
+    /// <param name="androidPurchaseJson">The JSON string representing the Android purchase data to validate against the stored signature.</param>
+    /// <returns>A value indicating whether the purchase JSON matches the stored signature for the order. Returns <see langword="true"/> 
+    /// if the signature matches; otherwise, <see langword="false"/>.</returns>
+    public async Task<bool> VerifyAgainstStoredSignatureAsync(string orderId, string androidPurchaseJson)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(orderId);
+
+        logger.LogInformation("In VerifyAgainstStoredSignatureAsync, orderId = {orderId}", orderId);
+
+        NullableResponse<PurchaseInfo> purchaseInfoResponse = await tableClient.GetEntityIfExistsAsync<PurchaseInfo>(
+            rowKey: orderId,
+            partitionKey: PartitionKeyName
+            );
+        if (purchaseInfoResponse.Value is PurchaseInfo purchaseInfo)
+        {
+            if (string.IsNullOrWhiteSpace(purchaseInfo.Signature))
+            {
+                // for backward compatibility we return True for this case until all clients are updated to store signatures
+                // TODO: Return false once all clients are updated to store signatures
+                logger.LogError("In VerifyAgainstStoredSignatureAsync, {tableName}[{partitionKeyName}, {orderId}] signature is empty, TEMPORARILY return true",
+                    tableClient.Name, PartitionKeyName, orderId);
+                return true;
+            }
+            // We have a signature, so validate the purchase against it to be sure it was issued by the play store
+            if (PlayStore.VerifyDivisiBillPurchaseSignature(androidPurchaseJson, purchaseInfo.Signature))
+            {
+                logger.LogInformation("In VerifyAgainstStoredSignatureAsync, {tableName}[{partitionKeyName}, {orderId}] signature matches, returning true",
+                    tableClient.Name, PartitionKeyName, orderId);
+                return true;
+            }
+            else
+            {
+                logger.LogError("In VerifyAgainstStoredSignatureAsync, {tableName}[{partitionKeyName}, {orderId}] signature does not match, returning false",
+                    tableClient.Name, PartitionKeyName, orderId);
+                return false;
+            }
+        }
+        else
+        {
+            logger.LogError("In VerifyAgainstStoredSignatureAsync, {tableName}[{partitionKeyName}, {orderId}] not found, returning false",
+                tableClient.Name, PartitionKeyName, orderId);
+            return false;
+        }
     }
 }

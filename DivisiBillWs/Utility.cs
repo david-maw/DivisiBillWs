@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System.Text;
+using System.Text.Json;
 
 namespace DivisiBillWs;
 
@@ -79,4 +80,38 @@ internal static class Utility
         (string errorMessage, int statusCode = StatusCodes.Status500InternalServerError)
         => new(errorMessage) { StatusCode = statusCode };
 
+
+    /// <summary>
+    /// Extracts the value of a specified top-level property from a JSON string.
+    /// </summary>
+    /// <remarks>If the JSON is malformed or the specified property does not exist at the root level, the
+    /// method returns <see langword="null"/>. Only top-level properties are considered; nested properties are not
+    /// searched.</remarks>
+    /// <param name="json">The JSON string to parse. Must not be null, empty, or contain only whitespace.</param>
+    /// <param name="nodeName">The name of the top-level property to extract from the JSON. Must not be null, empty, or contain only
+    /// whitespace.</param>
+    /// <returns>A <see cref="System.Text.Json.JsonElement"/> representing the value of the specified property if found;
+    /// otherwise, <see langword="null"/>.</returns>
+    public static JsonElement? ExtractNode(string json, string nodeName)
+    {
+        if (string.IsNullOrWhiteSpace(json) || string.IsNullOrWhiteSpace(nodeName))
+            return null;
+
+        try
+        {
+            JsonDocument doc = JsonDocument.Parse(json);
+            JsonElement root = doc.RootElement;
+
+            if (root.TryGetProperty(nodeName, out JsonElement node))
+            {
+                return node;
+            }
+        }
+        catch (JsonException)
+        {
+            // Handle malformed JSON
+        }
+
+        return null;
+    }
 }
