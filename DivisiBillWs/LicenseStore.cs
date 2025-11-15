@@ -243,6 +243,7 @@ internal class LicenseStore
     {
         ArgumentException.ThrowIfNullOrEmpty(androidPurchase.ProductId);
         ArgumentException.ThrowIfNullOrEmpty(androidPurchase.OrderId);
+        ArgumentException.ThrowIfNullOrEmpty(androidPurchase.PurchaseToken);
 
         NullableResponse<PurchaseInfo> purchaseInfoResponse = tableClient.GetEntityIfExists<PurchaseInfo>(
             rowKey: androidPurchase.OrderId,
