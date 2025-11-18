@@ -86,7 +86,7 @@ internal class DataStore<T> where T : StorageClass, new()
         // Get the data field, which may be either a string or an encrypted file
         string? dataValue = await GetFormFieldValueAsync("data");
         if (dataValue is null)
-            return new BadRequestResult();
+            return new BadRequestObjectResult("Missing 'data' field");
 
         // Create a new entry
         DataFormat data = new()
@@ -102,7 +102,7 @@ internal class DataStore<T> where T : StorageClass, new()
         {
             string? summaryValue = await GetFormFieldValueAsync("summary");
             if (summaryValue is null)
-                return new BadRequestResult();
+                return new BadRequestObjectResult("Missing 'summary' field");
             data.Summary = summaryValue;
         }
         var addEntityResponse = await tableClient.UpsertEntityAsync(data);
