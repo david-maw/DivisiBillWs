@@ -111,33 +111,6 @@ public class RecordPurchaseFunction
 
     /// Beware, according to https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference?tabs=blob#parallel-execution
     /// a the function code may be simultaneously executed on multiple threads.
-    [Function("recordpurchase")]
-    public async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequest httpRequest)
-    {
-        logger.LogInformation("The 'recordpurchase' web service function is processing a request.");
-        AndroidPurchase? androidPurchase;
-        try
-        {
-            androidPurchase = await AndroidPurchase.FromJsonAsync(httpRequest.Body);
-            logger.LogInformation($"successfully deserialized androidPurchase from request body");
-            if (string.IsNullOrWhiteSpace(androidPurchase?.OrderId))
-                return new BadRequestResult();
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "In 'recordpurchase', Exception deserializing product");
-            return new BadRequestResult();
-        }
-
-        bool recorded = await RecordAsync(androidPurchase, logger, licenseStore);
-
-        return recorded
-            ? new OkResult()
-            : new BadRequestResult();
-    }
-
-    /// Beware, according to https://learn.microsoft.com/en-us/azure/azure-functions/functions-reference?tabs=blob#parallel-execution
-    /// a the function code may be simultaneously executed on multiple threads.
     [Function(nameof(RecordAndroidPurchase))]
     public async Task<IActionResult> RecordAndroidPurchase([HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequest httpRequest)
     {

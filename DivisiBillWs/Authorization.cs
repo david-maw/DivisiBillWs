@@ -124,51 +124,6 @@ internal class Authorization
             return null; // Not a valid pro license
     }
 
-    // TODO: Delete this function once all clients are updated to store signatures
-    /// <summary>
-    /// <para>Called by the verify function to validate a license issued by an app store. The license is passed as the request body.
-    /// Assuming it passes verification then if the license is a pro purchase it is going to be passed in a header to be used 
-    /// for future authentication <see cref="GetIsAuthorizedAsync"/> so it is stored there. Other license types (like OCR licenses) are just validated.</para> 
-    /// 
-    /// <para>The last use time of the license is updated whenever this function is called by calling <see cref="LicenseStore.UpdateTimeUsedAsync"/>.
-    /// This update is done for administrative convenience, so old "stale" licenses are more easily detected./></para> 
-    /// 
-    /// <para>This is called at least once to verify every license DivisiBill uses.</para>
-    /// </summary>
-    /// <param name="httpRequest">The incoming HttpRequest object</param>
-    /// 
-    /// <returns>The number of remaining scans allocated to this license</returns>
-    internal async Task<IActionResult> GetIsVerifiedAsync(HttpRequest httpRequest)
-    {
-        AndroidPurchase? androidPurchase;
-
-        try
-        {
-            androidPurchase = await httpRequest.ReadFromJsonAsync<AndroidPurchase>();
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "In GetIsVerified, exception deserializing product: {Message}", ex.Message);
-            androidPurchase = null;
-        }
-
-        // If we reach here then check the license against the play store and our store
-        if (androidPurchase != null && PlayStore.VerifyPurchase(logger, androidPurchase))
-        {
-            // These are to allay the compiler's concerns...
-            Debug.Assert(androidPurchase.OrderId != null);
-            Debug.Assert(androidPurchase.ProductId != null);
-
-            int scans = await licenseStore.GetScansAsync(androidPurchase!); // Tells us it is one of ours
-
-            if (scans >= 0)
-            {
-                await licenseStore.UpdateTimeUsedAsync(androidPurchase.OrderId);
-                return new OkObjectResult(scans.ToString());
-            }
-        }
-        return new BadRequestResult();
-    }
     /// <summary>
     /// <para>Called by the <see cref="VerifyFunction.VerifyAndroidPurchase"/> function to validate a purchase issued by the android app store.
     /// The purchase JSON is passed as one field in the request body and the purchase signature is passed as the other.
