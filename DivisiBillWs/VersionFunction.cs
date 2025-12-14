@@ -27,6 +27,10 @@ public class VersionFunction(ILoggerFactory loggerFactory, IHostEnvironment envi
 
         _logger.LogInformation("The 'version' web service function is processing a request.");
 
+        // Add these lines to test timeout handling in the client
+        //Task.Delay(8000).Wait();
+        //return new BadRequestObjectResult("Deliberate delay of 5 seconds to test timeout handling, then failure.");
+
         return new OkObjectResult($""" 
             Application: {environment.ApplicationName} 
             Application_Version: {typeof(VersionFunction).Assembly.GetName().Version}
