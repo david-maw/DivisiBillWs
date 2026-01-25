@@ -7,12 +7,46 @@ html, body {
     background-color: black;
 }
 
+body {
+    width: 90%;
+    padding: 10px;
+}
+
+img {
+    max-width: 100%;
+    width: 300px;
+    height: auto;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
 table, th, td {
     border: 1px solid white;
     border-collapse: collapse;
+    padding: 10px;
+    margin-left: auto;
+    margin-right: auto;
 }
 
-th, td {
-    padding: 10px;
-    text-align: left;
+.highlight {
+    color: orangered;
+}
+
+a:link {
+    color: mediumspringgreen;
+}
+
+a:visited {
+    color: mediumspringgreen;
+}
+
+u {
+    font-family: icons;
+    text-decoration-line: none;
+}
+
+@font-face {
+    font-family: icons;
+    src: url(materialdesignicons-webfont.ttf)
 }
