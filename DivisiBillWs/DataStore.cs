@@ -3,6 +3,7 @@ using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using System.Collections;
 using System.Text.Json;
 
 namespace DivisiBillWs;
@@ -45,7 +46,7 @@ internal class DataStore<T> where T : StorageClass, new()
     }
 
     private readonly string TableName;
-    internal DataStore(ILogger loggerParam, LicenseStore licenseStoreParam)
+    internal DataStore(ILogger loggerParam, LicenseStore? licenseStoreParam)
     {
         TableName = TableNamePrefix + storageClass.TableName;
         tableClient = tableServiceClient.GetTableClient(tableName: TableName);
@@ -54,7 +55,7 @@ internal class DataStore<T> where T : StorageClass, new()
         licenseStore = licenseStoreParam;
     }
 
-    private readonly LicenseStore licenseStore;
+    private readonly LicenseStore? licenseStore;
     private readonly ILogger logger;
     private static readonly string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage")!;
     private static readonly TableServiceClient tableServiceClient = new(connectionString);
@@ -286,4 +287,83 @@ internal class DataStore<T> where T : StorageClass, new()
             : new OkObjectResult($"Deleted {deleteCount} items.");
     }
     #endregion
+    private static readonly (TimeSpan Age, TimeSpan Period)[] Schedule =
+    [
+        (TimeSpan.FromHours(4), TimeSpan.FromMinutes(10)),
+        (TimeSpan.FromDays(2), TimeSpan.FromHours(1)),
+        (TimeSpan.FromDays(7*2), TimeSpan.FromDays(1)),
+        (TimeSpan.FromDays(7*8), TimeSpan.FromDays(7)),
+        (TimeSpan.FromDays(7*104), TimeSpan.FromDays(7*4)),
+        (TimeSpan.MaxValue, TimeSpan.MaxValue) // Stopper value
+    ];
+    /// <summary>
+    /// Asynchronously removes outdated user data entries for all users from a data store based on age categories and
+    /// retention periods.
+    /// </summary>
+    /// <remarks>This method iterates through all user data entries and applies retention policies (hard coded in <see cref="Schedule"/> to
+    /// determine which entries should be deleted. The age-related policies are relative to the youngest item
+    /// rather than being absolute age so that lists that are no longer actively being updated do not simply "age out".
+    /// Entries that do not meet the criteria for retention are removed. The
+    /// operation is logged for auditing purposes. This method is intended for internal use and is not
+    /// thread-safe.</remarks>
+    /// <returns>A task that represents the asynchronous cleanup operation.</returns>
+    internal async Task CleanupAllUsersAsync()
+    {
+        const string logMessageTemplate = "In DataStore.CleanupAllUsers, cleanup items in {TableName}";
+        logger.LogInformation(logMessageTemplate, tableClient.Name);
+
+        string? filter = null;
+        var entities = tableClient.QueryAsync<DataFormat>(
+            filter: filter,
+            maxPerPage: null,
+            select: ["PartitionKey", "RowKey"]);
+
+        string partKey = string.Empty;
+        DateTime youngest = DateTime.MaxValue;
+        DateTime previous = youngest;
+        var currentSchedule = Schedule[0];
+        await foreach (var entity in entities)
+        {
+            if (!partKey.Equals(entity.PartitionKey, StringComparison.Ordinal))
+            {
+                // A new user, reset everything
+                partKey = entity.PartitionKey; // Note the change of user
+                youngest = entity.RowKey.ToDateTime(); ;
+                previous = youngest;
+                currentSchedule = Schedule[0];
+                logger.LogInformation("In DataStore.CleanupAllUsers for {TableName}, switched to {PartKey}", tableClient.Name, partKey);
+                logger.LogInformation("In DataStore.CleanupAllUsers for {TableName}, retaining first item for {Time}", tableClient.Name, youngest);
+            }
+            else
+            {
+                // Next row for the same user
+                DateTime dateTime = entity.RowKey.ToDateTime();
+                TimeSpan age = youngest - dateTime;
+                if (age == TimeSpan.Zero)
+                    continue; // Skip the first item
+                if (currentSchedule.Age < age)
+                {
+                    // We need to move to an older age category 
+                    currentSchedule = Schedule.First(s => s.Age > age);
+                    previous = dateTime; // Remember the last one we kept
+                    logger.LogInformation("In DataStore.CleanupAllUsers for {TableName}, retaining item for {Time}", tableClient.Name, dateTime);
+                    continue;
+                }
+                // We are within the current age category
+                TimeSpan period = previous - dateTime;
+                if (period < currentSchedule.Period)
+                {
+                    // This item is too close in time to the previous one, delete it.
+                    await tableClient.DeleteEntityAsync(entity.PartitionKey, entity.RowKey);
+                    logger.LogInformation("In DataStore.CleanupAllUsers for {TableName}, deleted item for {Time}", tableClient.Name, dateTime);
+                }
+                else
+                {
+                    // Keep this item and remember we kept it
+                    previous = dateTime;
+                    logger.LogInformation("In DataStore.CleanupAllUsers for {TableName}, retaining item for {Time}", tableClient.Name, dateTime);
+                }
+            }
+        }        
+    }
 }

@@ -46,6 +46,11 @@ internal static class Extensions
         }
         return true;
     }
+    internal static DateTime ToDateTime(this string rowKey)
+    {
+        string yyyymmddhhmmss = rowKey.Invert();
+        return Utility.DateTimeFromyyyymmddhhmmss(yyyymmddhhmmss);
+    }
 }
 internal static class Utility
 {
@@ -113,5 +118,25 @@ internal static class Utility
         }
 
         return null;
+    }
+    internal static DateTime DateTimeFromyyyymmddhhmmss(string yyyymmddhhmmss)
+    {
+        string s = Path.GetFileNameWithoutExtension(yyyymmddhhmmss);
+        if (s.Length == 14
+            && int.TryParse(s[..4], out int y)
+            && y > 2010 && y < 2030
+            && int.TryParse(s.AsSpan(4, 2), out int m)
+            && m >= 1 && m <= 12
+            && int.TryParse(s.AsSpan(6, 2), out int d)
+            && d >= 1 && d <= 31
+            && int.TryParse(s.AsSpan(8, 2), out int hh)
+            && hh >= 0 && hh <= 23
+            && int.TryParse(s.AsSpan(10, 2), out int mm)
+            && mm >= 0 && mm < 60
+            && int.TryParse(s.AsSpan(12, 2), out int ss)
+            && ss >= 0 && ss < 60)
+            return new DateTime(y, m, d, hh, mm, ss); // Plausible date
+        else
+            return DateTime.MinValue;
     }
 }
