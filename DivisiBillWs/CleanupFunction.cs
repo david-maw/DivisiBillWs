@@ -1,7 +1,3 @@
-using System;
-using Microsoft.Azure.Functions.Worker;
-using Microsoft.Extensions.Logging;
-
 namespace DivisiBillWs;
 
 public class CleanupFunction
@@ -18,7 +14,7 @@ public class CleanupFunction
     }
 
     [Function("CleanupFunction")]
-    public async Task Run([TimerTrigger("0 0 9 * * Wed")] TimerInfo myTimer) // Run at 9 am every Sunday
+    public async Task Run([TimerTrigger("0 0 9 * * Wed")] TimerInfo myTimer) // Run at 9 am every Wednesday
     {
         _logger.LogInformation("CleanupFunction executed at: {executionTime}", DateTime.Now);
         
