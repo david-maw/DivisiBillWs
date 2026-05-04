@@ -3,7 +3,6 @@ using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using System.Collections;
 using System.Text.Json;
 
 namespace DivisiBillWs;
@@ -332,7 +331,6 @@ internal class DataStore<T> where T : StorageClass, new()
                 previous = youngest;
                 currentSchedule = Schedule[0];
                 logger.LogInformation("In DataStore.CleanupAllUsers for {TableName}, switched to {PartKey}", tableClient.Name, partKey);
-                logger.LogInformation("In DataStore.CleanupAllUsers for {TableName}, retaining first item for {Time}", tableClient.Name, youngest);
             }
             else
             {
@@ -346,7 +344,6 @@ internal class DataStore<T> where T : StorageClass, new()
                     // We need to move to an older age category 
                     currentSchedule = Schedule.First(s => s.Age > age);
                     previous = dateTime; // Remember the last one we kept
-                    logger.LogInformation("In DataStore.CleanupAllUsers for {TableName}, retaining item for {Time}", tableClient.Name, dateTime);
                     continue;
                 }
                 // We are within the current age category
@@ -361,9 +358,8 @@ internal class DataStore<T> where T : StorageClass, new()
                 {
                     // Keep this item and remember we kept it
                     previous = dateTime;
-                    logger.LogInformation("In DataStore.CleanupAllUsers for {TableName}, retaining item for {Time}", tableClient.Name, dateTime);
                 }
             }
-        }        
+        }
     }
 }
