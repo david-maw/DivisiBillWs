@@ -40,7 +40,7 @@ public class FileFunction
         string fileName)
     {
         string? userKey = httpRequest.HttpContext.Items["userKey"] as string;
-        
+
         // Local function to copy existing blob to deleted folder
         async Task<CopyStatus> CopyBlobToDeletedAsync(BlobClient sourceBlob)
         {
@@ -130,7 +130,7 @@ public class FileFunction
                 bool markedForDeletion = await deleteBlob.DeleteIfExistsAsync();
                 if (markedForDeletion)
                     return new OkObjectResult($"Deleted {fileName}");
-                else 
+                else
                     return new OkObjectResult($"Delete of {fileName} failed, file not found");
 
             default:
@@ -151,7 +151,7 @@ public class FileFunction
             case "GET":
                 int prefixLength = userKey.Length + 1; // The "+1" is for the delimiter "/"
                 var list = new List<object>();
-                await foreach (var blob in imagesBlobContainer.GetBlobsAsync(prefix: userKey + "/"))
+                await foreach (BlobItem blob in imagesBlobContainer.GetBlobsAsync(new() { Prefix = userKey + "/" }))
                 {
                     list.Add(new
                     {
@@ -172,7 +172,7 @@ public class FileFunction
                 // Local function to add blob delete tasks for a given prefix
                 async Task AddUserBlobDeleteTasksAsync(string prefix)
                 {
-                    await foreach (var blobItem in imagesBlobContainer.GetBlobsAsync(prefix: prefix + "/"))
+                    await foreach (BlobItem blobItem in imagesBlobContainer.GetBlobsAsync(new() { Prefix = userKey + "/" }))
                     {
                         var blobClient = imagesBlobContainer.GetBlobClient(blobItem.Name);
                         deleteTasks.Add(Task.Run(async () =>
