@@ -76,32 +76,33 @@ public class AuthenticationMiddleware : HttpTriggerMiddlewareBase
     private readonly Authorization authorization;
     private readonly LicenseStore licenseStore;
 
+    private readonly string[] functionsThatDoNotRequireVerification =
+    [
+        "version", nameof(StatusFunction.Status), // These functions require no DivisiBill verification, they are just informational
+        "scan", // Remaining functions perform their own verification
+        nameof(VerifyFunction.VerifyAndroidPurchase),
+        nameof(RecordPurchaseFunction.RecordAndroidPurchase)
+    ];
+
     protected override async Task InnerInvoke(FunctionContext context, FunctionExecutionDelegate next)
     {
         string functionName = context.FunctionDefinition.Name;
 
-        bool needsVerification = functionName switch
-        {
-            // Note that this effectively makes the API name used in a URL case sensitive which, by default, Azure functions are not
-            // It would be easy enough to code round, but why bother...
-            "version" or "scan" or "verify" or "recordpurchase" => false,
-            nameof(VerifyFunction.VerifyAndroidPurchase) or nameof(RecordPurchaseFunction.RecordAndroidPurchase) => false,
-            _ => true,
-        };
+        bool needsVerification = !functionsThatDoNotRequireVerification.Contains(functionName, StringComparer.OrdinalIgnoreCase);
 
         if (needsVerification)
         {
             var httpContext = context.GetHttpContext();
             if (httpContext == null)
             {
-                logger.LogError("In AuthenticateMiddleware, httpContext is null");
+                logger.LogError("In AuthenticationMiddleware, httpContext is null");
                 return;
             }
             // Now do the heavy lifting of actual authentication
             string? userKey = await authorization.GetAuthorizedUserKeyAsync(httpContext.Request);
             if (userKey == null)
             {
-                logger.LogError("In AuthenticateMiddleware for {FunctionName}, DivisiBill authorization failed, returning BadRequest", functionName);
+                logger.LogError("In AuthenticationMiddleware for {FunctionName}, DivisiBill authorization failed, returning BadRequest", functionName);
                 httpContext.Response.StatusCode = (int)HttpStatusCode.BadRequest;
                 return;
             }
@@ -115,11 +116,11 @@ public class AuthenticationMiddleware : HttpTriggerMiddlewareBase
                     logger.LogInformation("In AuthenticationMiddleware, called licenseStore.GetTokenIfNew, returned {TokenStatus}", token is null ? "null" : "value");
                     httpContext.Response.Headers[Authorization.TokenHeaderName] = token;
                 }
-                logger.LogInformation("In AuthenticateMiddleware for {FunctionName}, DivisiBill authorization succeeded", functionName);
+                logger.LogInformation("In AuthenticationMiddleware for {FunctionName}, DivisiBill authorization succeeded", functionName);
             }
         }
         else
-            logger.LogInformation("In AuthenticateMiddleware for {FunctionName}, DivisiBill authorization not required", functionName);
+            logger.LogInformation("In AuthenticationMiddleware for {FunctionName}, DivisiBill authorization not required", functionName);
         await next(context);
     }
 }
