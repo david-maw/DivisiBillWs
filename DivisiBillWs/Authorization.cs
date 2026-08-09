@@ -126,9 +126,9 @@ internal class Authorization
         {
             // This looks like a pro purchase, and if we have a corresponding signature, so we can check that it was signed by the Play store and has not been tampered with.
             // TODO: Make signature mandatory once all clients are updated to send it.
-            // if (signature is not null && !PlayStore.VerifyDivisiBillPurchaseSignature(androidPurchaseJson, signature))
-            return null; // Not a valid pro license
-            // We still have not verified it against the Play Store to ensure the purchase is still valid
+            if (signature is not null && !PlayStore.VerifyDivisiBillPurchaseSignature(androidPurchaseJson, signature))
+                return null; // Not a valid pro license
+            // We still have not verified it against the Play Store to ensure the purchase is still valid, but it's a valid Product record from the Play Store
             return androidPurchase;
         }
         else

@@ -79,11 +79,17 @@ public class AuthenticationMiddleware : HttpTriggerMiddlewareBase
     private readonly string[] functionsThatDoNotRequireVerification =
     [
         "version", nameof(StatusFunction.Status), // These functions require no DivisiBill verification, they are just informational
-        "scan", // Remaining functions perform their own verification
-        nameof(VerifyFunction.VerifyAndroidPurchase),
-        nameof(RecordPurchaseFunction.RecordAndroidPurchase)
+        "scan", // Verifies an OCR license (and remaining scans), does not require a pro product
+        nameof(VerifyFunction.VerifyAndroidPurchase), // Used to verify a purchase of either a pro product or an OCR license
+        nameof(RecordPurchaseFunction.RecordAndroidPurchase) // Used to record a purchase of either a pro product or an OCR license
     ];
 
+    /// <summary>
+    /// Invokes the next middleware in the pipeline, performing authentication checks before proceeding.
+    /// </summary>
+    /// <param name="context">The function context.</param>
+    /// <param name="next">The next function execution delegate.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     protected override async Task InnerInvoke(FunctionContext context, FunctionExecutionDelegate next)
     {
         string functionName = context.FunctionDefinition.Name;
