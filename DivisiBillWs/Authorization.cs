@@ -8,6 +8,7 @@ internal class Authorization
 {
     internal const string PurchaseHeaderName = "divisibill-android-purchase";
     internal const string TokenHeaderName = "divisibill-token";
+    internal const string SignatureHeaderName = "divisibill-signature";
     internal Authorization(ILogger loggerParam, LicenseStore licenseStoreParam)
     {
         logger = loggerParam;
@@ -82,7 +83,8 @@ internal class Authorization
 
     /// <summary>
     /// Extract the pro purchase (if any) passed in a request (in its own header called <see cref="PurchaseHeaderName"/>)
-    /// and verify that its signature matches the stored signature and that it is a pro purchase.
+    /// and verify that signature indicates it's a valid pro purchase from the play store by first validating the signature
+    /// then checking with the Play store that it's current.
     /// </summary>
     /// <param name="loggerParam">Standard logging instance</param>
     /// <param name="httpRequest">Incoming HttpRequest - used as a sort of read-only state variable</param>
@@ -110,12 +112,22 @@ internal class Authorization
                 }
             }
         }
-        if (androidPurchase != null
+
+        // Get the signature from the header
+        var signatureHeader = httpRequest.Headers.FirstOrDefault((x) => x.Key.ToLowerInvariant().Equals(SignatureHeaderName));
+        string? signature = signatureHeader.Value.FirstOrDefault();
+
+        // Verify it's the kind of license we know about and that it's legitimate. We do not check with the play store to see if it's still valid here,
+        // that is done in GetIsAuthorizedAsync.
+        if (androidPurchase is not null
             && !string.IsNullOrWhiteSpace(androidPurchase.OrderId)
             && (androidPurchase.GetIsLicenseFor(LicenseStore.ProSubscriptionId)
                || androidPurchase.GetIsLicenseFor(LicenseStore.ProSubscriptionIdOld))) // Support license testers by not requiring them to keep renewing subscriptions
         {
-            // This looks like a pro purchase
+            // This looks like a pro purchase, and if we have a corresponding signature, so we can check that it was signed by the Play store and has not been tampered with.
+            // TODO: Make signature mandatory once all clients are updated to send it.
+            // if (signature is not null && !PlayStore.VerifyDivisiBillPurchaseSignature(androidPurchaseJson, signature))
+            return null; // Not a valid pro license
             // We still have not verified it against the Play Store to ensure the purchase is still valid
             return androidPurchase;
         }
