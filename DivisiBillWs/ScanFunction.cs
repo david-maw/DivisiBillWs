@@ -41,10 +41,10 @@ public class ScanFunction
         string? orderId = null;
         if (androidPurchase == null)
             return new BadRequestResult();
-        // Now verify against stored signature to ensure it was issued by the Play Store
-        if (string.IsNullOrWhiteSpace(androidPurchase.OrderId) || !await licenseStore.VerifyAgainstStoredSignatureAsync(androidPurchase.OrderId, ocrLicenseJson))
+        if (string.IsNullOrWhiteSpace(androidPurchase.OrderId))
             return new BadRequestResult();
-        if (await authorization.GetIsAuthorizedAsync(androidPurchase) && androidPurchase.GetIsLicenseFor(LicenseStore.OcrLicenseProductId))
+        // Check that the license is for the OCR product and Check with the Play Store that it is valid
+        if (androidPurchase.GetIsLicenseFor(LicenseStore.OcrLicenseProductId) & await authorization.GetIsAuthorizedAsync(androidPurchase))
             orderId = androidPurchase.OrderId;
         if (orderId == null)
             return new BadRequestResult();

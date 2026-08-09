@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using System.Diagnostics;
 
 namespace DivisiBillWs;
+
 internal class Authorization
 {
     internal const string PurchaseHeaderName = "divisibill-android-purchase";
@@ -113,10 +114,8 @@ internal class Authorization
             && !string.IsNullOrWhiteSpace(androidPurchase.OrderId)
             && (androidPurchase.GetIsLicenseFor(LicenseStore.ProSubscriptionId)
                || androidPurchase.GetIsLicenseFor(LicenseStore.ProSubscriptionIdOld))) // Support license testers by not requiring them to keep renewing subscriptions
-        {     
-            // This looks like a pro purchase so verify it against the stored signature to ensure it was issued by the Play Store
-            if (!await licenseStore.VerifyAgainstStoredSignatureAsync(androidPurchase.OrderId, androidPurchaseJson))
-                return null;
+        {
+            // This looks like a pro purchase
             // We still have not verified it against the Play Store to ensure the purchase is still valid
             return androidPurchase;
         }
@@ -173,7 +172,7 @@ internal class Authorization
 
         // If we reach here then check the license against the play store and our store (we know it was issued by the
         // Play Store because the signature was verified but we do not know if it is still current or is one of ours).
-        if (androidPurchase != null )
+        if (androidPurchase != null)
         {
             // These are to allay the compiler's concerns...
             Debug.Assert(androidPurchase.OrderId != null);
@@ -185,14 +184,11 @@ internal class Authorization
             int scans = await licenseStore.GetScansAsync(androidPurchase!);
             if (scans >= 0)
             {
-                // At this point, we know it's one we've heard of so if it is acknowledged we can use the signature
+                // At this point, we know it's one we've heard of so we can proceed
                 if (androidPurchase.Acknowledged)
                 {
-                    // Verify that the signature matches the stored signature or store it if we don't have it yet
-                    if (!await licenseStore.VerifyOrStoreSignatureAsync(androidPurchase.OrderId, signature))
-                        return new BadRequestObjectResult("signature does not match stored signature");
+                    await licenseStore.UpdateTimeUsedAsync(androidPurchase.OrderId);
                 }
-                await licenseStore.UpdateTimeUsedAsync(androidPurchase.OrderId);
                 return new OkObjectResult(scans.ToString());
             }
             else
