@@ -32,16 +32,16 @@ internal class DataStore<T> where T : StorageClass, new()
     private class DataFormat : ITableEntity
     {
         // Item information
-        public string Data { get; set; } = default!;
-        public long DataLength { get; set; } = default!;
-        public string Summary { get; set; } = default!;
+        public string Data { get; set; } = "";
+        public long DataLength { get; set; } = 0;
+        public string Summary { get; set; } = "";
         public bool IsEncrypted { get; set; } = false;
 
         // Required for ITableEntity
-        public string RowKey { get; set; } = default!; // User must provide a value
-        public string PartitionKey { get; set; } = default!; // User must provide a value
-        public ETag ETag { get; set; } = default!; // Value optional
-        public DateTimeOffset? Timestamp { get; set; } = default!; // Set by system whenever item is changed
+        public string RowKey { get; set; } = ""; // User must provide a value
+        public string PartitionKey { get; set; } = ""; // User must provide a value
+        public ETag ETag { get; set; } // Value optional
+        public DateTimeOffset? Timestamp { get; set; } = null; // Set by system whenever item is changed
     }
 
     private readonly string TableName;
