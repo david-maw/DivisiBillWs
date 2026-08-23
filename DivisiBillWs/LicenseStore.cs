@@ -63,7 +63,11 @@ internal class LicenseStore
     /// <summary>
     /// Create the tables if they do not exist
     /// </summary>
-    static LicenseStore() => tableClient.CreateIfNotExists();
+    static LicenseStore()
+    {
+        tableClient.CreateIfNotExists();
+        tokenTable.CreateIfNotExists();
+    }
 
     private readonly ILogger logger;
     internal LicenseStore(ILogger loggerParam) => logger = loggerParam;
@@ -225,12 +229,12 @@ internal class LicenseStore
                     tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
                 return -1;
             }
-       }
+        }
         else
         {
             logger.LogError("In LicenseStore.GetScans, {tableName}[{partitionKeyName}, {orderId}] not found, returning error",
                 tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
-            return -1; 
+            return -1;
         }
     }
     /// <summary>
