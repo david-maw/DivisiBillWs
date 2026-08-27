@@ -65,13 +65,14 @@ internal class PlayStore
             string subscriptionState = string.Empty;
             bool isSubscription = androidPurchase.IsSubscription;
 
-            // There are a couple of reserved test order IDs that can be used to simulate purchases without calling the Play Store
-            bool doNotCallPlayStore = Utility.IsDebug && androidPurchase.OrderId is "GPA.3334-3035-7547-40873" or "GPA.3332-0658-5128-80451";
+            // There is a test user that can be used to without calling the Play Store, which is useful for testing when the Internet is unavailable.
+            // On an Android test system also see https://developer.android.com/google/play/billing/test#test-purchases for other options
+            bool doNotCallPlayStore = Utility.IsDebug && androidPurchase.ObfuscatedAccountId is "VM2UM7jbkJVSv2XDovdyEQ392jjTtrRNSVDmB7AP0dfQdy004v";
             if (isSubscription)
             {
-                SubscriptionPurchaseV2? verifiedSubscriptionPurchase = null;
                 try
                 {
+                    SubscriptionPurchaseV2? verifiedSubscriptionPurchase;
                     if (doNotCallPlayStore)
                     {
                         verifiedSubscriptionPurchase = new()

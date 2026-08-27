@@ -83,13 +83,13 @@ internal class Authorization
 
     /// <summary>
     /// Extract the pro purchase (if any) passed in a request (in its own header called <see cref="PurchaseHeaderName"/>)
-    /// and verify that signature indicates it's a valid pro purchase from the play store by first validating the signature
-    /// then checking with the Play store that it's current.
+    /// and verify that signature indicates it's a purchase from the play store by validating the signature. This function 
+    /// does not check with the Play store that the purchase is current, so it may be an old one that's no longer valid.
     /// </summary>
     /// <param name="loggerParam">Standard logging instance</param>
     /// <param name="httpRequest">Incoming HttpRequest - used as a sort of read-only state variable</param>
     /// <returns></returns>
-    internal async Task<AndroidPurchase?> ProLicenseFromRequestAsync(ILogger loggerParam, HttpRequest httpRequest)
+    internal static async Task<AndroidPurchase?> ProLicenseFromRequestAsync(ILogger loggerParam, HttpRequest httpRequest)
     {
         AndroidPurchase? androidPurchase = null;
 
@@ -125,10 +125,11 @@ internal class Authorization
                || androidPurchase.GetIsLicenseFor(LicenseStore.ProSubscriptionIdOld))) // Support license testers by not requiring them to keep renewing subscriptions
         {
             // This looks like a pro purchase, and if we have a corresponding signature, so we can check that it was signed by the Play store and has not been tampered with.
-            // TODO: Make signature mandatory once all clients are updated to send it.
-            if (signature is not null && !PlayStore.VerifyDivisiBillPurchaseSignature(androidPurchaseJson, signature))
-                return null; // Not a valid pro license
-            // We still have not verified it against the Play Store to ensure the purchase is still valid, but it's a valid Product record from the Play Store
+            if (signature is null)
+                return null; // The caller must provide a signature for us to validate that this is a valid pro license
+            if (!PlayStore.VerifyDivisiBillPurchaseSignature(androidPurchaseJson, signature))
+                return null; // Could not validate the signature so this is not a valid pro license
+            // If we get here we still have not verified it against the Play Store to ensure the purchase is still valid, but it's a valid Product record from the Play Store
             return androidPurchase;
         }
         else
