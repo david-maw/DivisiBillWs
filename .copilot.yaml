@@ -1,0 +1,195 @@
+# GitHub Copilot Rules for DivisiBillWs (.NET 10)
+# This file defines code style guidelines and best practices for the project
+
+rules:
+  - name: Namespace Usage
+    description: Use file-scoped namespaces (namespace DivisiBillWs;)
+    examples:
+      - correct: |
+          using System;
+          namespace DivisiBillWs;
+
+          public class MyClass { }
+      - incorrect: |
+          using System;
+          namespace DivisiBillWs {
+              public class MyClass { }
+          }
+
+  - name: Access Modifiers
+    description: |
+      - Use `internal` for non-public classes and methods
+      - Use `private` for private fields (default visibility)
+      - Use `public` only for API-facing classes and methods
+      - Static read-only fields should use PascalCase
+    examples:
+      - correct: |
+          internal class DataStore<T> { }
+          internal async Task<IActionResult> GetAsync() { }
+          private readonly ILogger logger;
+          private static readonly string connectionString = ...;
+
+  - name: Naming Conventions
+    description: |
+      - Classes and public methods: PascalCase (MyClass, GetData)
+      - Private fields: camelCase (myField)
+      - Constants and static readonly: PascalCase (MaxItems, ConnectionString)
+      - Type parameters: Single capital letter (T, TItem)
+      - Local variables: camelCase (userKey, responseList)
+    examples:
+      - correct: |
+          const int MaxItems = 1000;
+          private readonly ILogger logger;
+          internal class DataStore<T> { }
+          string userKey = "...";
+
+  - name: Class Structure
+    description: |
+      - Generic constraints should be on same line: `where T : StorageClass, new()`
+      - Use #region/#endregion to organize large classes
+      - Inner classes should be private and use PascalCase
+      - Separate concerns: properties, methods, local functions
+    examples:
+      - correct: |
+          internal class DataStore<T> where T : StorageClass, new() { }
+
+          #region Interface Properties and Methods
+          public async Task<IActionResult> PutAsync() { }
+          #endregion
+
+          private class DataFormat : ITableEntity { }
+
+  - name: Comments and Documentation
+    description: |
+      - Use XML documentation comments (///) for public and internal APIs
+      - Include <summary>, <param>, <returns> as appropriate
+      - Use single-line comments (//) only when clarification is needed
+      - Inline comments should explain "why" not "what"
+    examples:
+      - correct: |
+          /// <summary>
+          /// Asynchronously retrieves data from table storage
+          /// </summary>
+          /// <param name="userKey">The user partition key</param>
+          /// <returns>Action result containing the data</returns>
+          internal async Task<IActionResult> GetAsync(string userKey) { }
+
+  - name: Async/Await Patterns
+    description: |
+      - Async methods should end with "Async" suffix
+      - Use ConfigureAwait(false) in library code when needed
+      - Prefer async all the way instead of blocking calls
+      - Always use `await` for async operations, don't use `.Result`
+    examples:
+      - correct: |
+          internal async Task<IActionResult> GetAsync(string userKey) { }
+          public async Task<List<string>> SimpleEnumerateAsync(string userKey) { }
+
+  - name: Collections and Initialization
+    description: |
+      - Use target-typed new expressions: `List<string> items = [];`
+      - Use collection initializers with square brackets for empty collections
+      - Use foreach/await foreach for iteration where possible
+    examples:
+      - correct: |
+          List<string> responseList = [];
+          var fieldNames = ["RowKey", "DataLength"];
+          await foreach (var item in returnedPages) { }
+
+  - name: Error Handling
+    description: |
+      - Use null-coalescing and pattern matching where appropriate
+      - Return appropriate HTTP status codes through IActionResult types
+      - Log errors using ILogger with structured logging templates
+      - Use ArgumentNullException for parameter validation
+    examples:
+      - correct: |
+          ArgumentNullException.ThrowIfNullOrWhiteSpace(formName);
+          return data.Value is not null ? new FileContentResult(...) : new BadRequestResult();
+          logger.LogError(message, param1, param2);
+
+  - name: HTTP Methods and Return Types
+    description: |
+      - Use IActionResult for HTTP endpoint return types
+      - Return appropriate result types: OkResult, BadRequestResult, NotFoundResult
+      - Use OkObjectResult for JSON responses
+      - Use JsonResult with JsonSerializerOptions for custom serialization
+    examples:
+      - correct: |
+          public async Task<IActionResult> GetAsync() { }
+          return new BadRequestObjectResult("Error message");
+          return new JsonResult(responseList, new JsonSerializerOptions { PropertyNamingPolicy = null });
+
+  - name: Extension Methods
+    description: |
+      - Use extension methods for cross-cutting functionality
+      - Place extension methods in a static class (typically Extensions class)
+      - Document extension methods with XML comments
+      - Prefix internal extension classes appropriately
+    examples:
+      - correct: |
+          internal static class Extensions {
+              /// <summary>
+              /// Complements strings of decimal digits
+              /// </summary>
+              internal static string Invert(this string input) { }
+          }
+
+  - name: Local Functions
+    description: |
+      - Use local functions for helper logic scoped to a single method
+      - Place at the end of the method
+      - Document with XML comments if complex
+    examples:
+      - correct: |
+          async Task<string?> GetFormFieldValueAsync(string? formName) {
+              // implementation
+          }
+          var result = await GetFormFieldValueAsync("data");
+
+  - name: Conditional Logic
+    description: |
+      - Prefer pattern matching (is not, is null) over null checks
+      - Use switch expressions for complex conditionals
+      - Early returns to reduce nesting
+    examples:
+      - correct: |
+          if (data.Value is not null) { return result; }
+          return x switch { null => result1, _ => result2 };
+
+  - name: Azure and External Integration
+    description: |
+      - Use Azure SDK types (TableClient, BlobContainerClient, etc.)
+      - Load connection strings from environment variables
+      - Use static readonly for singleton Azure clients
+      - Handle RequestFailedException appropriately
+    examples:
+      - correct: |
+          private static readonly string connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage")!;
+          private static readonly TableServiceClient tableServiceClient = new(connectionString);
+          catch (RequestFailedException) { }
+
+  - name: Logging
+    description: |
+      - Use structured logging with templates: LogInformation(template, params)
+      - Include context in log messages: class name, method name, user info
+      - Use appropriate log levels: LogInformation, LogError, LogWarning
+      - Template format: "In ClassName.MethodName, action description"
+    examples:
+      - correct: |
+          const string logMessageTemplate = "In DataStore.GetAsync, retrieve data from {TableName}[{UserKey}]";
+          logger.LogInformation(logMessageTemplate, tableClient.Name, userKey);
+
+  - name: Testing and Build
+    description: |
+      - Target .NET 10
+      - Use async patterns in tests
+      - Run build before commit: dotnet build
+      - Keep test files alongside source with .Tests suffix
+
+  - name: Code Organization
+    description: |
+      - Keep classes and methods focused on single responsibility
+      - Prefer private methods and internal classes over public
+      - Use readonly for fields that don't change after initialization
+      - Group related functionality with #region blocks
