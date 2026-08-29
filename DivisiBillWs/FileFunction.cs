@@ -5,16 +5,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace DivisiBillWs;
 
-public class FileFunction
+public class FileFunction(ILogger<FileFunction> logger, BlobContainerClient imagesBlobContainer)
 {
-    private readonly ILogger<FileFunction> logger;
-    private readonly BlobContainerClient imagesBlobContainer;
-
-    public FileFunction(ILogger<FileFunction> logger, BlobContainerClient imagesBlobContainerParam)
-    {
-        this.logger = logger;
-        imagesBlobContainer = imagesBlobContainerParam;
-    }
 
     /// <summary>
     /// Handles HTTP requests to upload, download, or delete a user-specific file in blob storage, based on the HTTP
