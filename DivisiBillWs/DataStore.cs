@@ -62,7 +62,9 @@ internal class DataStore<T> where T : StorageClass, new()
     // New instance of TableClient class referencing the server-side table
     private readonly TableClient tableClient;
 
-    #region Interface Methods
+    #region Interface Properties and Methods
+
+    internal TableClient TableClient => tableClient;
     public async Task<IActionResult> PutAsync(HttpRequest httpRequest, string userKey, string dataName)
     {
         const string logMessageTemplate = "In DataStore.PutAsync, upsert data to {TableName}[{UserKey}, {DataName}({InvertedDataName})";
@@ -188,6 +190,31 @@ internal class DataStore<T> where T : StorageClass, new()
             return new OkResult();
         }
     }
+
+    /// <summary>
+    /// Asynchronously enumerates the names of data entries for a specific user in the data store.
+    /// </summary>
+    /// <param name="userKey">The key of the user whose data entries are to be enumerated.</param>
+    /// <returns>A list of entry names for the specified user key.</returns>
+    public async Task<List<string>> SimpleEnumerateAsync(string userKey)
+    {
+        List<string> responseList = [];
+        string query = $"PartitionKey eq '{userKey}'";
+        // Determine which fieldNames to return
+        List<string> fieldNames = ["RowKey"]; // Note that "Data" is not included
+        // Find entries
+        var returnedPages = tableClient.QueryAsync<DataFormat>(query, null, fieldNames);
+        if (returnedPages == null)
+            return [];
+        else
+        {
+            await foreach (var item in returnedPages)
+            {
+                responseList.Add(item.RowKey.Invert());
+            }
+            return responseList;
+        }
+    }
     public async Task<IActionResult> EnumerateAsync(HttpRequest httpRequest)
     {
         var parsedQueryString = httpRequest.Query;
@@ -212,7 +239,6 @@ internal class DataStore<T> where T : StorageClass, new()
         string query = $"PartitionKey eq '{userKey}'";
         if (!string.IsNullOrWhiteSpace(before))
             query += " and RowKey gt '" + before.Invert() + "'";
-        // Determine which fieldNames to return
         List<string> fieldNames = ["RowKey", "DataLength", "IsEncrypted"]; // Note that "Data" is not included
         if (storageClass.UseSummaryField) fieldNames.Add("Summary");
         // Find entries
