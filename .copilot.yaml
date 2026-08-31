@@ -88,7 +88,7 @@ rules:
   - name: Collections and Initialization
     description: |
       - Use target-typed new expressions: `List<string> items = [];`
-      - Use collection initializers with square brackets for empty collections
+      - Use collection initializers with square brackets where possible
       - Use foreach/await foreach for iteration where possible
     examples:
       - correct: |
