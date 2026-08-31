@@ -1,3 +1,4 @@
+using Azure;
 using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
@@ -22,26 +23,33 @@ public class ProPurchaseNotifyFunction(ILogger<ProPurchaseNotifyFunction> logger
         }
         string orderId = androidPurchase.OrderId;
         //(userKey, orderId) = (orderId, userKey); // Swap values of userKey and orderId for testing 
+        Stopwatch stopwatch = Stopwatch.StartNew();
         #region Migrate Blobs
         await blobContainer.CreateIfNotExistsAsync();
         var blobsForOrderId = await GetBlobsWithPrefixAsync(orderId, httpRequest.HttpContext.RequestAborted);
-        Stopwatch stopwatch = Stopwatch.StartNew();
-        foreach (var blob in blobsForOrderId)
+
+        int successCount = 0;
+        int failureCount = 0;
+
+        if (blobsForOrderId.Count > 0)
         {
-            string newBlobName = $"{userKey}{blob.Name[orderId.Length..]}";
-            await RenameBlobAsync(blob.Name, newBlobName, httpRequest.HttpContext.RequestAborted);
+            successCount = await RenameBlobsBatchAsync(orderId, userKey, blobsForOrderId, httpRequest.HttpContext.RequestAborted);
+            failureCount = blobsForOrderId.Count - successCount;
+
+            if (failureCount > 0)
+            {
+                logger.LogWarning($"Failed to rename {failureCount} out of {blobsForOrderId.Count} blobs for OrderId: {orderId}");
+            }
         }
-        stopwatch.Stop();
         #endregion
         #region Migrate Tables
         int migratedMealCount = await MigrateTableDataAsync<MealStorage>(orderId, userKey, httpRequest.HttpContext.RequestAborted);
         int migratedPersonListCount = await MigrateTableDataAsync<PersonListStorage>(orderId, userKey, httpRequest.HttpContext.RequestAborted);
         int migratedVenueListCount = await MigrateTableDataAsync<VenueListStorage>(orderId, userKey, httpRequest.HttpContext.RequestAborted);
         #endregion
-        string resultMsg = Utility.IsDebug
-            ? $"OrderId: {orderId} ({blobsForOrderId.Count} blobs)\nto UserKey: {userKey} in {stopwatch.ElapsedMilliseconds} ms,\n"
-                + $"Migrated Meal Count: {migratedMealCount}, Migrated PersonList Count: {migratedPersonListCount}, Migrated VenueList Count: {migratedVenueListCount}"
-            : $"Migrated Images: ({blobsForOrderId.Count} Migrated Meals: {migratedMealCount}, Migrated PersonLists: {migratedPersonListCount}, Migrated VenueLists: {migratedVenueListCount}";
+        stopwatch.Stop();
+        string resultMsg = (Utility.IsDebug ? $"OrderId: {orderId}\nto UserKey: {userKey} in {stopwatch.ElapsedMilliseconds} ms,\n" : "")
+            + $"Migrated Images:{successCount - failureCount}, Meals: {migratedMealCount}, PersonLists: {migratedPersonListCount}, VenueLists: {migratedVenueListCount} ";
 
         return new OkObjectResult(resultMsg);
     }
@@ -99,6 +107,49 @@ public class ProPurchaseNotifyFunction(ILogger<ProPurchaseNotifyFunction> logger
                 $"Blob copied to '{newName}' but failed to delete original '{oldName}'.");
         }
     }
+
+    /// <summary>
+    /// Renames multiple blobs in parallel batches with error handling.
+    /// Tracks successes and failures while respecting Azure throttling limits.
+    /// </summary>
+    private async Task<int> RenameBlobsBatchAsync(
+        string orderId,
+        string userKey,
+        List<BlobItem> blobs,
+        CancellationToken cancellationToken = default)
+    {
+        const int maxConcurrentRenames = 5; // Azure throttling safe limit
+        var semaphore = new SemaphoreSlim(maxConcurrentRenames);
+        int successCount = 0;
+
+        var renameTasks = blobs.Select(async blob =>
+        {
+            await semaphore.WaitAsync(cancellationToken);
+            try
+            {
+                string newBlobName = $"{userKey}{blob.Name[orderId.Length..]}";
+
+                try
+                {
+                    await RenameBlobAsync(blob.Name, newBlobName, cancellationToken);
+                    Interlocked.Increment(ref successCount);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError("Failed to rename blob {name}: {message}", blob.Name, ex.Message);
+                }
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
+
+        await Task.WhenAll(renameTasks);
+        semaphore.Dispose();
+
+        return successCount;
+    }
     #endregion
     #region Table Handling
     // Migrate data in the tables from the old partition key (orderId) to the new partition key (userKey)
@@ -117,6 +168,7 @@ public class ProPurchaseNotifyFunction(ILogger<ProPurchaseNotifyFunction> logger
     }
     /// <summary>
     /// Moves all entities from one PartitionKey to another.
+    /// Uses batch operations to handle large numbers of entries efficiently.
     /// </summary>
     public static async Task<int> MovePartitionAsync(
         TableClient table,
@@ -125,6 +177,11 @@ public class ProPurchaseNotifyFunction(ILogger<ProPurchaseNotifyFunction> logger
         CancellationToken cancellationToken = default)
     {
         int movedItemCount = 0;
+        const int itemCountEstimate = 5000; // a reasonable guess at the maximum number of items
+        const int batchSize = 100; // Azure Tables limit per transaction
+
+        var batch = new List<(TableEntity newEntity, string rowKey)>(itemCountEstimate / batchSize);
+
         // Query all entities in the old partition
         await foreach (var entity in table.QueryAsync<TableEntity>(
             filter: $"PartitionKey eq '{oldPartitionKey}'",
@@ -134,22 +191,62 @@ public class ProPurchaseNotifyFunction(ILogger<ProPurchaseNotifyFunction> logger
             var newEntity = new TableEntity(newPartitionKey, entity.RowKey);
 
             // Copy all properties except keys
-            foreach (var kvp in entity)
+            foreach (var kvp in entity.Where(kvp => kvp.Key is not "PartitionKey" and not "RowKey"))
+                newEntity[kvp.Key] = kvp.Value;
+
+            batch.Add((newEntity, entity.RowKey));
+
+            // Process batch when it reaches the size limit
+            if (batch.Count >= batchSize)
             {
-                if (kvp.Key is not "PartitionKey" and not "RowKey")
-                    newEntity[kvp.Key] = kvp.Value;
+                movedItemCount += await ProcessBatchAsync(table, oldPartitionKey, batch, cancellationToken);
+                batch.Clear();
             }
-
-            // Insert new entity
-            await table.AddEntityAsync(newEntity, cancellationToken);
-
-            // Delete old entity
-            await table.DeleteEntityAsync(oldPartitionKey, entity.RowKey, cancellationToken: cancellationToken);
-
-            // All done, increment the count
-            movedItemCount++;
         }
+
+        // Process remaining entities
+        if (batch.Count > 0)
+            movedItemCount += await ProcessBatchAsync(table, oldPartitionKey, batch, cancellationToken);
+
         return movedItemCount;
+    }
+
+    /// <summary>
+    /// Processes a batch of entities by adding them to the new partition and deleting from the old partition.
+    /// We do it in that order so if the operation fails or is cancelled, worst case, we have duplicates
+    /// </summary>
+    private static async Task<int> ProcessBatchAsync(
+        TableClient table,
+        string oldPartitionKey,
+        List<(TableEntity newEntity, string rowKey)> batch,
+        CancellationToken cancellationToken = default)
+    {
+        // Azure Tables requires all entities in a batch to have the same PartitionKey
+        // Process inserts and deletes sequentially, each with their respective partition keys
+
+        // Step 1: Insert new entities (all have newPartitionKey from newEntity)
+        var insertTransaction = new List<TableTransactionAction>(batch.Count);
+        foreach (var (newEntity, _) in batch)
+            insertTransaction.Add(new TableTransactionAction(TableTransactionActionType.Add, newEntity));
+
+        var insertResult = await table.SubmitTransactionAsync(insertTransaction, cancellationToken);
+
+        var insertResponses = insertResult.Value;
+
+        if (insertResponses.Where(r => r.IsError).FirstOrDefault() is { } response)
+            throw new InvalidOperationException($"Failed to insert entity: {response.ReasonPhrase}");
+
+        // Step 2: Delete old entities (all have oldPartitionKey)
+        var deleteTransaction = new List<TableTransactionAction>(batch.Count);
+        foreach (var (_, rowKey) in batch)
+        {
+            var deleteEntity = new TableEntity(oldPartitionKey, rowKey) { ETag = ETag.All };
+            deleteTransaction.Add(new TableTransactionAction(TableTransactionActionType.Delete, deleteEntity));
+        }
+
+        await table.SubmitTransactionAsync(deleteTransaction, cancellationToken);
+
+        return batch.Count;
     }
 
     #endregion
