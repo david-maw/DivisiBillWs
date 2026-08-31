@@ -38,7 +38,7 @@ public class ProPurchaseNotifyFunction(ILogger<ProPurchaseNotifyFunction> logger
         int migratedPersonListCount = await MigrateTableDataAsync<PersonListStorage>(orderId, userKey, httpRequest.HttpContext.RequestAborted);
         int migratedVenueListCount = await MigrateTableDataAsync<VenueListStorage>(orderId, userKey, httpRequest.HttpContext.RequestAborted);
         #endregion
-        string resultMsg = !Utility.IsDebug
+        string resultMsg = Utility.IsDebug
             ? $"OrderId: {orderId} ({blobsForOrderId.Count} blobs)\nto UserKey: {userKey} in {stopwatch.ElapsedMilliseconds} ms,\n"
                 + $"Migrated Meal Count: {migratedMealCount}, Migrated PersonList Count: {migratedPersonListCount}, Migrated VenueList Count: {migratedVenueListCount}"
             : $"Migrated Images: ({blobsForOrderId.Count} Migrated Meals: {migratedMealCount}, Migrated PersonLists: {migratedPersonListCount}, Migrated VenueLists: {migratedVenueListCount}";

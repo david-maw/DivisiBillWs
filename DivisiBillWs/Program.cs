@@ -25,6 +25,12 @@ var host = new HostBuilder()
                 //    // We recommend adjusting this value in production.
                 //    options.ProfilesSampleRate = 1.0;
             });
+        // Diagnostic logging if needed
+        //builder.Services.AddLogging(logging =>
+        //{
+        //    logging.AddConsole();
+        //    logging.AddDebug();
+        //});
         builder.Services.AddSingleton(provider =>
         {
             var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
@@ -32,5 +38,5 @@ var host = new HostBuilder()
         });
     })
     .Build();
-
+// AzureEventSourceListener.CreateConsoleLogger(); // Use this to auidt Azure SDK calls, but it will log a lot of information, so use it only for debugging purposes.
 host.Run();

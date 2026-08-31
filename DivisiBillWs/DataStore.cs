@@ -144,20 +144,29 @@ internal class DataStore<T> where T : StorageClass, new()
             return new BadRequestResult();
         }
         logger.LogInformation("In DataStore.GetAsync, {DataName} was a legal data name", dataName);
-        // Get data for named entry in specific Order
-        var data = await tableClient.GetEntityIfExistsAsync<DataFormat>(userKey, dataName.Invert());
-        if (data.Value is not null)
+        try
         {
-            logger.LogInformation("In DataStore.GetAsync, got data, length = {DataLength}, encrypted = {IsEncrypted}", data.Value.DataLength, data.Value.IsEncrypted);
-            return data.Value.IsEncrypted
-                ? new FileContentResult(Convert.FromBase64String(data.Value.Data), "application/octet-stream")
-                : new OkObjectResult(data.Value.Data);
+            // Get data for named entry in specific Order
+            var data = await tableClient.GetEntityIfExistsAsync<DataFormat>(userKey, dataName.Invert());
+            if (data.Value is not null)
+            {
+                logger.LogInformation("In DataStore.GetAsync, got data, length = {DataLength}, encrypted = {IsEncrypted}", data.Value.DataLength, data.Value.IsEncrypted);
+                return data.Value.IsEncrypted
+                    ? new FileContentResult(Convert.FromBase64String(data.Value.Data), "application/octet-stream")
+                    : new OkObjectResult(data.Value.Data);
+            }
+            else
+            {
+                const string noDataFoundLogMessage = "In DataStore.GetAsync, no data found";
+                logger.LogError(noDataFoundLogMessage);
+                return new BadRequestResult();
+            }
         }
-        else
+        catch (Exception)
         {
-            const string noDataFoundLogMessage = "In DataStore.GetAsync, no data found";
-            logger.LogError(noDataFoundLogMessage);
-            return new BadRequestResult();
+            const string faultedLogMessage = "In DataStore.GetAsync, faulted";
+            logger.LogError(faultedLogMessage);
+            return new ObjectResult(faultedLogMessage) { StatusCode = StatusCodes.Status500InternalServerError };
         }
     }
     public async Task<IActionResult> DeleteAsync(string userKey, string dataName)
@@ -260,21 +269,32 @@ internal class DataStore<T> where T : StorageClass, new()
             int count = 0;
             var responseList = new List<EnumeratedDataItem>();
 
-            await foreach (var item in returnedPages)
+            try
             {
-                string imageBlobName = userKey + "/" + item.RowKey.Invert() + (item.IsEncrypted ? ".jpg.enc" : ".jpg");
-                BlobClient? blobClient = imagesBlobContainer?.GetBlobClient(imageBlobName);
-                responseList.Add(new EnumeratedDataItem(item.RowKey.Invert(), item.DataLength, item.Data, item.IsEncrypted,
-                    storageClass.UseSummaryField ? item.Summary : null,
-                    blobClient is not null ? await blobClient.ExistsAsync() : false));
-                if (++count >= top) break;
+                await foreach (var item in returnedPages)
+                {
+                    string imageBlobName = userKey + "/" + item.RowKey.Invert() + (item.IsEncrypted ? ".jpg.enc" : ".jpg");
+                    BlobClient? blobClient = imagesBlobContainer?.GetBlobClient(imageBlobName);
+                    responseList.Add(new EnumeratedDataItem(item.RowKey.Invert(), item.DataLength, item.Data, item.IsEncrypted,
+                        storageClass.UseSummaryField ? item.Summary : null,
+                        blobClient is not null ? await blobClient.ExistsAsync() : false));
+                    if (++count >= top) break;
+                }
+                return new JsonResult(responseList, new JsonSerializerOptions()
+                {
+                    PropertyNamingPolicy = null,
+                    WriteIndented = true,
+                    DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+                });
             }
-            return new JsonResult(responseList, new JsonSerializerOptions()
+            catch (Exception ex)
             {
-                PropertyNamingPolicy = null,
-                WriteIndented = true,
-                DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-            });
+                // return internal server error
+                return new ObjectResult("Fault in StorageClass.EnumerateAsync: " + ex.Message)
+                {
+                    StatusCode = StatusCodes.Status500InternalServerError
+                };
+            }
         }
     }
     public async Task<IActionResult> DeleteAllAsync(HttpRequest httpRequest)
