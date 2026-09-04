@@ -36,6 +36,7 @@ internal class DataStore<T> where T : StorageClass, new()
         public long DataLength { get; set; } = 0;
         public string Summary { get; set; } = "";
         public bool IsEncrypted { get; set; } = false;
+        public bool IsStoredInBlob { get; set; } = false; // True if data is stored in blob storage instead of table
 
         // Required for ITableEntity
         public string RowKey { get; set; } = ""; // User must provide a value
@@ -90,14 +91,55 @@ internal class DataStore<T> where T : StorageClass, new()
         if (dataValue is null)
             return new BadRequestObjectResult("Missing 'data' field");
 
+        const long BlobStorageThreshold = 24000; // 24 KB - conservative threshold, allows doubling for Unicode and still stays within 64 KB table storage limit
+        bool storedInBlob = dataValue.Length > BlobStorageThreshold;
+
+        // If data is large, store in blob storage
+        if (storedInBlob)
+        {
+            try
+            {
+                string blobContainerName = storageClass.TableName.ToLower();
+                var dataBlobContainer = new BlobContainerClient(connectionString, blobContainerName);
+                await dataBlobContainer.CreateIfNotExistsAsync();
+
+                var dataBlob = dataBlobContainer.GetBlobClient($"{userKey}/{dataName}.dat");
+
+                // Convert data to bytes for blob storage
+                byte[] dataBytes;
+                if (isEncrypted)
+                {
+                    // Data is base64-encoded, decode it to binary
+                    dataBytes = Convert.FromBase64String(dataValue);
+                }
+                else
+                {
+                    // Data is plain text, encode to UTF-8 bytes
+                    dataBytes = System.Text.Encoding.UTF8.GetBytes(dataValue);
+                }
+
+                var uploadResult = await dataBlob.UploadAsync(new MemoryStream(dataBytes), overwrite: true);
+                if (uploadResult.GetRawResponse().IsError)
+                    return Utility.CreateFailedResult("Failed to upload large data to blob storage.");
+
+                logger.LogInformation("In DataStore.PutAsync, stored large data ({DataLength} bytes) in blob storage", dataBytes.Length);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "In DataStore.PutAsync, failed to store large data in blob storage");
+                return Utility.CreateFailedResult("Failed to store large data in blob storage: " + ex.Message);
+            }
+        }
+
         // Create a new entry
         DataFormat data = new()
         {
             PartitionKey = userKey,
             RowKey = dataName.Invert(),
-            Data = dataValue,
+            Data = storedInBlob ? "" : dataValue, // Keep empty if stored in blob
             IsEncrypted = isEncrypted,
-            DataLength = dataValue == null ? 0 : dataValue.Length
+            DataLength = dataValue == null ? 0 : dataValue.Length,
+            IsStoredInBlob = storedInBlob
         };
         // Add the optional summary field (only used with meal storage)
         if (storageClass.UseSummaryField)
@@ -150,10 +192,53 @@ internal class DataStore<T> where T : StorageClass, new()
             var data = await tableClient.GetEntityIfExistsAsync<DataFormat>(userKey, dataName.Invert());
             if (data.Value is not null)
             {
-                logger.LogInformation("In DataStore.GetAsync, got data, length = {DataLength}, encrypted = {IsEncrypted}", data.Value.DataLength, data.Value.IsEncrypted);
+                logger.LogInformation("In DataStore.GetAsync, got data, length = {DataLength}, encrypted = {IsEncrypted}, storedInBlob = {IsStoredInBlob}",
+                    data.Value.DataLength, data.Value.IsEncrypted, data.Value.IsStoredInBlob);
+
+                string dataValue = data.Value.Data;
+
+                // If data is stored in blob, retrieve it
+                if (data.Value.IsStoredInBlob)
+                {
+                    try
+                    {
+                        string blobContainerName = storageClass.TableName.ToLower();
+                        var dataBlobContainer = new BlobContainerClient(connectionString, blobContainerName);
+                        var dataBlob = dataBlobContainer.GetBlobClient($"{userKey}/{dataName}.dat");
+
+                        var download = await dataBlob.DownloadAsync();
+                        using var stream = download.Value.Content;
+                        using var memoryStream = new MemoryStream();
+                        await stream.CopyToAsync(memoryStream);
+                        byte[] blobBytes = memoryStream.ToArray();
+
+                        // Convert blob bytes back to the original format
+                        if (data.Value.IsEncrypted)
+                        {
+                            // Blob contains binary encrypted data, convert back to base64
+                            dataValue = Convert.ToBase64String(blobBytes);
+                        }
+                        else
+                        {
+                            // Blob contains UTF-8 encoded plain text, decode back to string
+                            dataValue = System.Text.Encoding.UTF8.GetString(blobBytes);
+                        }
+
+                        logger.LogInformation("In DataStore.GetAsync, retrieved large data ({DataLength} bytes) from blob storage", blobBytes.Length);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "In DataStore.GetAsync, failed to retrieve data from blob storage");
+                        return new ObjectResult("Failed to retrieve large data from blob storage: " + ex.Message)
+                        {
+                            StatusCode = StatusCodes.Status500InternalServerError
+                        };
+                    }
+                }
+
                 return data.Value.IsEncrypted
-                    ? new FileContentResult(Convert.FromBase64String(data.Value.Data), "application/octet-stream")
-                    : new OkObjectResult(data.Value.Data);
+                    ? new FileContentResult(Convert.FromBase64String(dataValue), "application/octet-stream")
+                    : new OkObjectResult(dataValue);
             }
             else
             {
@@ -175,28 +260,52 @@ internal class DataStore<T> where T : StorageClass, new()
         logger.LogInformation(logMessageTemplate, tableClient.Name, userKey, dataName, dataName.Invert());
         if (!dataName.IsValidName())
             return new BadRequestResult();
+
+        // First check if data is stored in blob before deleting from table
+        var dataEntity = await tableClient.GetEntityIfExistsAsync<DataFormat>(userKey, dataName.Invert());
+        bool wasStoredInBlob = dataEntity.Value?.IsStoredInBlob ?? false;
+
         // Delete Entry
         var deleteResult = await tableClient.DeleteEntityAsync(userKey, dataName.Invert());
         if (deleteResult.IsError)
             return new NotFoundResult();
         else
         {
-            // Now delete any accompanying image
+            string blobContainerName = storageClass.TableName.ToLower();
+            var dataBlobContainer = new BlobContainerClient(connectionString, blobContainerName);
             var imagesBlobContainer = new BlobContainerClient(connectionString, "images");
-            var deleteBlob = imagesBlobContainer.GetBlobClient(userKey + "/" + dataName + ".jpg");
-            var deleteEncryptedBlob = imagesBlobContainer.GetBlobClient(userKey + "/" + dataName + ".jpg.enc");
+
             try
             {
-                // At most one of these files should be present, but it's cheaper to delete them both than to query then delete
-                await deleteBlob.DeleteIfExistsAsync();
-                await deleteEncryptedBlob.DeleteIfExistsAsync();
+                // Delete data blob if it was stored there
+                if (wasStoredInBlob)
+                {
+                    var deleteDataBlob = dataBlobContainer.GetBlobClient($"{userKey}/{dataName}.dat");
+                    await deleteDataBlob.DeleteIfExistsAsync();
+                    logger.LogInformation("In DataStore.Delete, deleted blob data for {DataName}", dataName);
+                }
+
+                // Now delete any accompanying image (both encrypted and unencrypted versions)
+                var deleteBlob = imagesBlobContainer.GetBlobClient(userKey + "/" + dataName + ".jpg");
+                var deleteEncryptedBlob = imagesBlobContainer.GetBlobClient(userKey + "/" + dataName + ".jpg.enc");
+                try
+                {
+                    // At most one of these files should be present, but it's cheaper to delete them both than to query then delete
+                    await deleteBlob.DeleteIfExistsAsync();
+                    await deleteEncryptedBlob.DeleteIfExistsAsync();
+                }
+                catch (RequestFailedException)
+                {
+                    return new StatusCodeResult(StatusCodes.Status500InternalServerError);
+                    throw;
+                }
+                return new OkResult();
             }
-            catch (RequestFailedException)
+            catch (RequestFailedException ex)
             {
+                logger.LogError(ex, "In DataStore.Delete, failed to delete blob data");
                 return new StatusCodeResult(StatusCodes.Status500InternalServerError);
-                throw;
             }
-            return new OkResult();
         }
     }
 
