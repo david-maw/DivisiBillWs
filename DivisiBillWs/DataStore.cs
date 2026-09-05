@@ -63,9 +63,20 @@ internal class DataStore<T> where T : StorageClass, new()
     // New instance of TableClient class referencing the server-side table
     private readonly TableClient tableClient;
 
+    private static string GetDataBlobExtension(bool encrypted) => encrypted ? ".dat.enc" : ".dat";
+
     #region Interface Properties and Methods
 
     internal TableClient TableClient => tableClient;
+
+    /// <summary>
+    /// Asynchronously adds or updates a table entry for a specific user in the data store. If the data content is large, it will 
+    /// be stored in blob storage instead of the table. The method also handles optional summary fields and encryption status.
+    /// </summary>
+    /// <param name="httpRequest">The HTTP request containing the data to be stored.</param>
+    /// <param name="userKey">The key identifying the user.</param>
+    /// <param name="dataName">The name of the data entry.</param>
+    /// <returns>An IActionResult representing the result of the operation.</returns>
     public async Task<IActionResult> PutAsync(HttpRequest httpRequest, string userKey, string dataName)
     {
         const string logMessageTemplate = "In DataStore.PutAsync, upsert data to {TableName}[{UserKey}, {DataName}({InvertedDataName})";
@@ -103,7 +114,9 @@ internal class DataStore<T> where T : StorageClass, new()
                 var dataBlobContainer = new BlobContainerClient(connectionString, blobContainerName);
                 await dataBlobContainer.CreateIfNotExistsAsync();
 
-                var dataBlob = dataBlobContainer.GetBlobClient($"{userKey}/{dataName}.dat");
+                string blobExtension = GetDataBlobExtension(isEncrypted);
+                string alternateBlobExtension = GetDataBlobExtension(!isEncrypted);
+                var dataBlob = dataBlobContainer.GetBlobClient($"{userKey}/{dataName}{blobExtension}");
 
                 // Convert data to bytes for blob storage
                 byte[] dataBytes;
@@ -121,6 +134,17 @@ internal class DataStore<T> where T : StorageClass, new()
                 var uploadResult = await dataBlob.UploadAsync(new MemoryStream(dataBytes), overwrite: true);
                 if (uploadResult.GetRawResponse().IsError)
                     return Utility.CreateFailedResult("Failed to upload large data to blob storage.");
+
+                // Now delete the alternate version of the blob just in case it's there, so if we stored .dat.enc, delete .dat and vice versa
+                try
+                {
+                    await dataBlobContainer.GetBlobClient(userKey + "/" + dataName + alternateBlobExtension).DeleteIfExistsAsync();
+                }
+                catch (RequestFailedException)
+                {
+                    logger.LogError("In DataStore.PutAsync, failed to delete alternate large data blob ({DataLength} bytes) in blob storage", dataBytes.Length);
+                    return new StatusCodeResult(StatusCodes.Status500InternalServerError);
+                }
 
                 logger.LogInformation("In DataStore.PutAsync, stored large data ({DataLength} bytes) in blob storage", dataBytes.Length);
             }
@@ -204,7 +228,8 @@ internal class DataStore<T> where T : StorageClass, new()
                     {
                         string blobContainerName = storageClass.TableName.ToLower();
                         var dataBlobContainer = new BlobContainerClient(connectionString, blobContainerName);
-                        var dataBlob = dataBlobContainer.GetBlobClient($"{userKey}/{dataName}.dat");
+                        string blobExtension = GetDataBlobExtension(data.Value.IsEncrypted);
+                        var dataBlob = dataBlobContainer.GetBlobClient($"{userKey}/{dataName}{blobExtension}");
 
                         var download = await dataBlob.DownloadAsync();
                         using var stream = download.Value.Content;
@@ -264,6 +289,7 @@ internal class DataStore<T> where T : StorageClass, new()
         // First check if data is stored in blob before deleting from table
         var dataEntity = await tableClient.GetEntityIfExistsAsync<DataFormat>(userKey, dataName.Invert());
         bool wasStoredInBlob = dataEntity.Value?.IsStoredInBlob ?? false;
+        bool wasEncrypted = dataEntity.Value?.IsEncrypted ?? false;
 
         // Delete Entry
         var deleteResult = await tableClient.DeleteEntityAsync(userKey, dataName.Invert());
@@ -280,7 +306,8 @@ internal class DataStore<T> where T : StorageClass, new()
                 // Delete data blob if it was stored there
                 if (wasStoredInBlob)
                 {
-                    var deleteDataBlob = dataBlobContainer.GetBlobClient($"{userKey}/{dataName}.dat");
+                    string blobExtension = GetDataBlobExtension(wasEncrypted);
+                    var deleteDataBlob = dataBlobContainer.GetBlobClient($"{userKey}/{dataName}{blobExtension}");
                     await deleteDataBlob.DeleteIfExistsAsync();
                     logger.LogInformation("In DataStore.Delete, deleted blob data for {DataName}", dataName);
                 }
