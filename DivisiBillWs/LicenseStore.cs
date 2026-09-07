@@ -33,6 +33,7 @@ internal class LicenseStore
         public DateTimeOffset TimeCreated { get; set; } = DateTime.Now; // Set when creating item
         public string ObfuscatedAccountId { get; set; } = default!;
         public DateTimeOffset TimeUsed { get; set; } = default; // Set when using this license
+        public string MigrationSource { get; set; } = default!; // Set when migrating from another license
 
         // Required for ITableEntity
         public string RowKey { get; set; } = default!; // OrderId
@@ -237,6 +238,45 @@ internal class LicenseStore
             return -1;
         }
     }
+
+    /// <summary>
+    /// <para>Return the number of available scans associated with a license. Start by making sure it is known (by its ProOrderId and PurchaseToken).</para>
+    /// <para>If the stored license has no PurchaseToken then give it the one from the incoming license as long as that PurchaseToken is not already in use somewhere else.</para>
+    /// </summary>
+    /// <param name="androidPurchase">The purchase object representing the license</param>
+    /// <returns>The number of scans remaining for this license or -1 if the license was not found</returns>
+    public async Task<string?> GetMigrationSourceAsync(AndroidPurchase androidPurchase)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(androidPurchase.OrderId);
+        ArgumentException.ThrowIfNullOrEmpty(androidPurchase.PurchaseToken); // can be validated by calling Google
+
+        NullableResponse<PurchaseInfo> purchaseInfoResponse = await tableClient.GetEntityIfExistsAsync<PurchaseInfo>(
+            rowKey: androidPurchase.OrderId,
+            partitionKey: PartitionKeyName
+            );
+        if (purchaseInfoResponse.HasValue && purchaseInfoResponse?.Value is PurchaseInfo purchaseInfo)
+        {
+            if (purchaseInfo.PurchaseToken.Equals(androidPurchase.PurchaseToken))
+            {
+                logger.LogInformation("In LicenseStore.GetMigrationSource, {tableName}[{partitionKeyName}, {orderId}] has value, returning {migrationSource}",
+                    tableClient.Name, PartitionKeyName, androidPurchase.OrderId, purchaseInfo.MigrationSource);
+                return purchaseInfo.MigrationSource;
+            }
+            else
+            {
+                logger.LogError("In LicenseStore.GetMigrationSource, {tableName}[{partitionKeyName}, {orderId}] stored purchase token does not match, returning error",
+                    tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
+                return null;
+            }
+        }
+        else
+        {
+            logger.LogError("In LicenseStore.GetMigrationSource, {tableName}[{partitionKeyName}, {orderId}] not found, returning error",
+                tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
+            return null;
+        }
+    }
+
     /// <summary>
     /// Record a new license, making sure it is not already known (by its OrderId) and does not reuse an existing PurchaseToken 
     /// </summary>

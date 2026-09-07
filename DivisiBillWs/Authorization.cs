@@ -202,6 +202,16 @@ internal class Authorization
                 {
                     await licenseStore.UpdateTimeUsedAsync(androidPurchase.OrderId);
                 }
+                // If there's a pending Migration operation, start it
+                string? migrationSource = await licenseStore.GetMigrationSourceAsync(androidPurchase!);
+
+                if (migrationSource != null && androidPurchase.ObfuscatedAccountId != null)
+                {
+                    logger.LogInformation("Starting migration for {OrderId} from {MigrationSource} to {newKey}", androidPurchase.OrderId, migrationSource, androidPurchase.ObfuscatedAccountId);
+                    MigrationClass rename = new(logger);
+                    await rename.RenameAsNeeded(migrationSource, androidPurchase.ObfuscatedAccountId, httpRequest);
+                }
+
                 return new OkObjectResult(scans.ToString());
             }
             else

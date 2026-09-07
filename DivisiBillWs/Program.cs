@@ -38,5 +38,5 @@ var host = new HostBuilder()
         });
     })
     .Build();
-// AzureEventSourceListener.CreateConsoleLogger(); // Use this to auidt Azure SDK calls, but it will log a lot of information, so use it only for debugging purposes.
+// AzureEventSourceListener.CreateConsoleLogger(); // Use this to audit Azure SDK calls, but it will log a lot of information, so use it only for debugging purposes.
 host.Run();
