@@ -1,9 +1,10 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace DivisiBillWs;
 
-public class MealFunction
+public partial class MealFunction
 {
     private readonly ILogger logger;
     internal readonly DataStore<MealStorage> storage;
@@ -27,7 +28,7 @@ public class MealFunction
     public async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "get", "put", "delete",
         Route = "meal/{id}")] HttpRequest httpRequest, string id)
     {
-        logger.LogInformation("MealFunction HTTP trigger function processing a {Method} request for ID {Id}", httpRequest.Method, id);
+        LogMealFunctionProcessing(httpRequest.Method, id);
         string userKey = httpRequest.HttpContext.Items["userKey"] as string
             ?? throw new NullReferenceException("userKey");
         // Already authorized, so call the appropriate function
@@ -45,7 +46,7 @@ public class MealFunction
     [Function("Meals")]
     public async Task<IActionResult> Enumerate([HttpTrigger(AuthorizationLevel.Function, "get", "delete")] HttpRequest httpRequest)
     {
-        logger.LogInformation("Meals function processing a {method} request.", httpRequest.Method);
+        LogMealsProcessing(httpRequest.Method);
         Task<IActionResult> actionResult = httpRequest.Method switch
         {
             "GET" => storage.EnumerateAsync(httpRequest),
@@ -54,4 +55,10 @@ public class MealFunction
         };
         return await actionResult;
     }
+
+    [LoggerMessage(LogLevel.Information, "MealFunction HTTP trigger function processing a {Method} request for ID {Id}")]
+    private partial void LogMealFunctionProcessing(string Method, string Id);
+
+    [LoggerMessage(LogLevel.Information, "Meals function processing a {method} request.")]
+    private partial void LogMealsProcessing(string method);
 }

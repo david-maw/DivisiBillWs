@@ -1,5 +1,6 @@
 ﻿using Microsoft.Azure.Functions.Worker.Middleware;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace DivisiBillWs;
 
@@ -37,7 +38,7 @@ public abstract class HttpTriggerMiddlewareBase(ILogger<HttpTriggerMiddlewareBas
 /// <summary>
 /// A concrete class designed to catch and report exceptions in azure functions
 /// </summary>
-public class CustomExceptionHandler(ILogger<CustomExceptionHandler> loggerParam) : HttpTriggerMiddlewareBase(loggerParam)
+public partial class CustomExceptionHandler(ILogger<CustomExceptionHandler> loggerParam) : HttpTriggerMiddlewareBase(loggerParam)
 {
     private static readonly JsonSerializerOptions jsonOptions = new() { WriteIndented = true };
     protected override async Task InnerInvoke(FunctionContext context, FunctionExecutionDelegate next)
@@ -56,14 +57,17 @@ public class CustomExceptionHandler(ILogger<CustomExceptionHandler> loggerParam)
             string responseBody = JsonSerializer.Serialize(errorMessage, jsonOptions);
             await response.WriteStringAsync(responseBody);
             context.GetInvocationResult().Value = response;
-            logger.LogError(ex, "Exception Thrown Invoking '{FunctionName}'", context.FunctionDefinition.Name);
+            LogExceptionThrown(ex, context.FunctionDefinition.Name);
         }
     }
+
+    [LoggerMessage(LogLevel.Error, "Exception Thrown Invoking '{FunctionName}'")]
+    private partial void LogExceptionThrown(Exception ex, string FunctionName);
 }
 /// <summary>
 /// A concrete class to authenticate most functions with specific exceptions
 /// </summary>
-public class AuthenticationMiddleware : HttpTriggerMiddlewareBase
+public partial class AuthenticationMiddleware : HttpTriggerMiddlewareBase
 {
     public AuthenticationMiddleware(ILogger<AuthenticationMiddleware> loggerParam) : base(loggerParam)
     {
@@ -101,14 +105,14 @@ public class AuthenticationMiddleware : HttpTriggerMiddlewareBase
             var httpContext = context.GetHttpContext();
             if (httpContext == null)
             {
-                logger.LogError("In AuthenticationMiddleware, httpContext is null");
+                LogHttpContextNull();
                 return;
             }
             // Now do the heavy lifting of actual authentication
             string? userKey = await authorization.GetAuthorizedUserKeyAsync(httpContext.Request);
             if (userKey == null)
             {
-                logger.LogError("In AuthenticationMiddleware for {FunctionName}, DivisiBill authorization failed, returning BadRequest", functionName);
+                LogAuthorizationFailed(functionName);
                 httpContext.Response.StatusCode = (int)HttpStatusCode.BadRequest;
                 return;
             }
@@ -119,14 +123,29 @@ public class AuthenticationMiddleware : HttpTriggerMiddlewareBase
                 string? token = licenseStore.GetTokenIfNew(userKey);
                 if (token != null)
                 { // The token has been updated, so add it to the response headers so the caller can use it next time they need to call us
-                    logger.LogInformation("In AuthenticationMiddleware, called licenseStore.GetTokenIfNew, returned {TokenStatus}", token is null ? "null" : "value");
+                    LogTokenRetrieved(token is null ? "null" : "value");
                     httpContext.Response.Headers[Authorization.TokenHeaderName] = token;
                 }
-                logger.LogInformation("In AuthenticationMiddleware for {FunctionName}, DivisiBill authorization succeeded", functionName);
+                LogAuthorizationSucceeded(functionName);
             }
         }
         else
-            logger.LogInformation("In AuthenticationMiddleware for {FunctionName}, DivisiBill authorization not required", functionName);
+            LogAuthorizationNotRequired(functionName);
         await next(context);
     }
+
+    [LoggerMessage(LogLevel.Error, "In AuthenticationMiddleware, httpContext is null")]
+    private partial void LogHttpContextNull();
+
+    [LoggerMessage(LogLevel.Error, "In AuthenticationMiddleware for {FunctionName}, DivisiBill authorization failed, returning BadRequest")]
+    private partial void LogAuthorizationFailed(string FunctionName);
+
+    [LoggerMessage(LogLevel.Information, "In AuthenticationMiddleware, called licenseStore.GetTokenIfNew, returned {TokenStatus}")]
+    private partial void LogTokenRetrieved(string TokenStatus);
+
+    [LoggerMessage(LogLevel.Information, "In AuthenticationMiddleware for {FunctionName}, DivisiBill authorization succeeded")]
+    private partial void LogAuthorizationSucceeded(string FunctionName);
+
+    [LoggerMessage(LogLevel.Information, "In AuthenticationMiddleware for {FunctionName}, DivisiBill authorization not required")]
+    private partial void LogAuthorizationNotRequired(string FunctionName);
 }

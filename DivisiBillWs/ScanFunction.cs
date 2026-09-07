@@ -2,10 +2,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Primitives;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 
 namespace DivisiBillWs;
 
-public class ScanFunction
+public partial class ScanFunction
 {
     private readonly ILogger logger;
 
@@ -24,7 +25,7 @@ public class ScanFunction
     [Function("scan")]
     public async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequest httpRequest)
     {
-        logger.LogInformation("The 'scan' web service function is processing a request.");
+        LogScanProcessing();
 
         // The passed data should be a multi-part form containing one file and an OCR license
         if (!httpRequest.HasFormContentType)
@@ -58,9 +59,9 @@ public class ScanFunction
         var query = httpRequest.Query;
         string option = query["option"].ToString() ?? "";
         if (string.IsNullOrWhiteSpace(option))
-            logger.LogInformation("In 'scan', option is null");
+            LogScanOptionNull();
         else
-            logger.LogInformation("In 'scan', option = {Option}", option);
+            LogScanOption(option);
         // Now do the actual scanning, or fake it
         switch (option)
         {
@@ -121,4 +122,13 @@ public class ScanFunction
             new FormElement(){ FieldName = "TransactionDate", FieldValue = "4/3/21" },
         ]
     };
+
+    [LoggerMessage(LogLevel.Information, "The 'scan' web service function is processing a request.")]
+    private partial void LogScanProcessing();
+
+    [LoggerMessage(LogLevel.Information, "In 'scan', option is null")]
+    private partial void LogScanOptionNull();
+
+    [LoggerMessage(LogLevel.Information, "In 'scan', option = {Option}")]
+    private partial void LogScanOption(string Option);
 }

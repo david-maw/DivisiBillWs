@@ -2,10 +2,11 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace DivisiBillWs;
 
-public class FileFunction(ILogger<FileFunction> logger, BlobContainerClient imagesBlobContainer)
+public partial class FileFunction(ILogger<FileFunction> logger, BlobContainerClient imagesBlobContainer)
 {
 
     /// <summary>
@@ -52,7 +53,7 @@ public class FileFunction(ILogger<FileFunction> logger, BlobContainerClient imag
 
         // Beginning of function code
 
-        logger.LogInformation("'file' function processing a {Method} request for id {FileName}", httpRequest.Method, fileName);
+        LogFileProcessingRequest(httpRequest.Method, fileName);
 
         await imagesBlobContainer.CreateIfNotExistsAsync();
 
@@ -67,7 +68,7 @@ public class FileFunction(ILogger<FileFunction> logger, BlobContainerClient imag
                     string blobName = formFile.FileName;
                     if (string.IsNullOrWhiteSpace(blobName))
                         return new UnprocessableEntityObjectResult("No file name provided.");
-                    logger.LogInformation("'file' function POST request is actually for form FileName {FileName}", blobName);
+                    LogPostRequest(blobName);
                     var uploadBlob = imagesBlobContainer.GetBlobClient(userKey + "/" + blobName);
                     if (await uploadBlob.ExistsAsync())
                     {
@@ -197,4 +198,10 @@ public class FileFunction(ILogger<FileFunction> logger, BlobContainerClient imag
                 return new BadRequestObjectResult("Unsupported HTTP method. Use GET, or DELETE.");
         } // switch
     }
+
+    [LoggerMessage(LogLevel.Information, "'file' function processing a {Method} request for id {FileName}")]
+    private partial void LogFileProcessingRequest(string method, string fileName);
+
+    [LoggerMessage(LogLevel.Information, "'file' function POST request is actually for form FileName {FileName}")]
+    private partial void LogPostRequest(string fileName);
 }

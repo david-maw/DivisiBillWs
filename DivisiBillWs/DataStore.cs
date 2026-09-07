@@ -3,6 +3,7 @@ using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
 namespace DivisiBillWs;
@@ -11,7 +12,7 @@ namespace DivisiBillWs;
 /// Generic class used to access lists of Meals, lists of people lists, or lists of Venue lists 
 /// </summary>
 /// <typeparam name="T">The storage type to use</typeparam>
-internal class DataStore<T> where T : StorageClass, new()
+internal partial class DataStore<T> where T : StorageClass, new()
 {
     private readonly T storageClass = new();
     private const string TableNamePrefix =
@@ -79,8 +80,7 @@ internal class DataStore<T> where T : StorageClass, new()
     /// <returns>An IActionResult representing the result of the operation.</returns>
     public async Task<IActionResult> PutAsync(HttpRequest httpRequest, string userKey, string dataName)
     {
-        const string logMessageTemplate = "In DataStore.PutAsync, upsert data to {TableName}[{UserKey}, {DataName}({InvertedDataName})";
-        logger.LogInformation(logMessageTemplate, tableClient.Name, userKey, dataName, dataName.Invert());
+        LogPutAsyncStarting(logger, tableClient.Name, userKey, dataName, dataName.Invert());
 
         if (!dataName.IsValidName())
             return new BadRequestResult();
@@ -91,9 +91,8 @@ internal class DataStore<T> where T : StorageClass, new()
             return new BadRequestObjectResult("A form collection is required");
         if ((formCollection.Count > 0) == (formCollection.Files.Count > 0))
         {
-            const string fieldsAndFilesExclusiveMessage = "In DataStore.PutAsync, exactly one of fields and forms may be nonzero";
-            logger.LogError(fieldsAndFilesExclusiveMessage);
-            return new BadRequestObjectResult(fieldsAndFilesExclusiveMessage);
+            LogPutAsyncFieldFilesError(logger);
+            return new BadRequestObjectResult("In DataStore.PutAsync, exactly one of fields and forms may be nonzero");
         }
         // If there are any files, then all fields must be files
         bool isEncrypted = formCollection.Files.Count > 0;
@@ -142,15 +141,15 @@ internal class DataStore<T> where T : StorageClass, new()
                 }
                 catch (RequestFailedException)
                 {
-                    logger.LogError("In DataStore.PutAsync, failed to delete alternate large data blob ({DataLength} bytes) in blob storage", dataBytes.Length);
+                    LogPutAsyncFailedDeleteAlternateBlob(logger, dataBytes.Length);
                     return new StatusCodeResult(StatusCodes.Status500InternalServerError);
                 }
 
-                logger.LogInformation("In DataStore.PutAsync, stored large data ({DataLength} bytes) in blob storage", dataBytes.Length);
+                LogPutAsyncStoredLargeDataBlob(logger, dataBytes.Length);
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "In DataStore.PutAsync, failed to store large data in blob storage");
+                LogPutAsyncFailedStoreBlob(logger, ex);
                 return Utility.CreateFailedResult("Failed to store large data in blob storage: " + ex.Message);
             }
         }
@@ -201,23 +200,20 @@ internal class DataStore<T> where T : StorageClass, new()
     }
     public async Task<IActionResult> GetAsync(string userKey, string dataName)
     {
-        const string logMessageTemplate = "In DataStore.GetAsync, retrieve data from {TableName}[{UserKey}, {DataName}({InvertedDataName})]";
-        logger.LogInformation(logMessageTemplate, tableClient.Name, userKey, dataName, dataName.Invert());
+        LogGetAsyncRetrieve(logger, tableClient.Name, userKey, dataName, dataName.Invert());
         if (!dataName.IsValidName())
         {
-            const string invalidNameLogMessage = "In DataStore.GetAsync, invalid name '{DataName}'";
-            logger.LogError(invalidNameLogMessage, dataName);
+            LogGetAsyncInvalidName(logger, dataName);
             return new BadRequestResult();
         }
-        logger.LogInformation("In DataStore.GetAsync, {DataName} was a legal data name", dataName);
+        LogGetAsyncLegalName(logger, dataName);
         try
         {
             // Get data for named entry in specific Order
             var data = await tableClient.GetEntityIfExistsAsync<DataFormat>(userKey, dataName.Invert());
             if (data.Value is not null)
             {
-                logger.LogInformation("In DataStore.GetAsync, got data, length = {DataLength}, encrypted = {IsEncrypted}, storedInBlob = {IsStoredInBlob}",
-                    data.Value.DataLength, data.Value.IsEncrypted, data.Value.IsStoredInBlob);
+                LogGetAsyncGotData(logger, data.Value.DataLength, data.Value.IsEncrypted, data.Value.IsStoredInBlob);
 
                 string dataValue = data.Value.Data;
 
@@ -249,11 +245,11 @@ internal class DataStore<T> where T : StorageClass, new()
                             dataValue = System.Text.Encoding.UTF8.GetString(blobBytes);
                         }
 
-                        logger.LogInformation("In DataStore.GetAsync, retrieved large data ({DataLength} bytes) from blob storage", blobBytes.Length);
+                        LogGetAsyncRetrievedBlob(logger, blobBytes.Length);
                     }
                     catch (Exception ex)
                     {
-                        logger.LogError(ex, "In DataStore.GetAsync, failed to retrieve data from blob storage");
+                        LogGetAsyncFailedBlob(logger, ex);
                         return new ObjectResult("Failed to retrieve large data from blob storage: " + ex.Message)
                         {
                             StatusCode = StatusCodes.Status500InternalServerError
@@ -267,22 +263,19 @@ internal class DataStore<T> where T : StorageClass, new()
             }
             else
             {
-                const string noDataFoundLogMessage = "In DataStore.GetAsync, no data found";
-                logger.LogError(noDataFoundLogMessage);
+                LogGetAsyncNoDataFound(logger);
                 return new BadRequestResult();
             }
         }
         catch (Exception)
         {
-            const string faultedLogMessage = "In DataStore.GetAsync, faulted";
-            logger.LogError(faultedLogMessage);
-            return new ObjectResult(faultedLogMessage) { StatusCode = StatusCodes.Status500InternalServerError };
+            LogGetAsyncFaulted(logger);
+            return new ObjectResult("In DataStore.GetAsync, faulted") { StatusCode = StatusCodes.Status500InternalServerError };
         }
     }
     public async Task<IActionResult> DeleteAsync(string userKey, string dataName)
     {
-        const string logMessageTemplate = "In DataStore.Delete, delete data at {TableName}[{UserKey}, {DataName}({InvertedDataName})]";
-        logger.LogInformation(logMessageTemplate, tableClient.Name, userKey, dataName, dataName.Invert());
+        LogDeleteAsyncStart(logger, tableClient.Name, userKey, dataName, dataName.Invert());
         if (!dataName.IsValidName())
             return new BadRequestResult();
 
@@ -309,7 +302,7 @@ internal class DataStore<T> where T : StorageClass, new()
                     string blobExtension = GetDataBlobExtension(wasEncrypted);
                     var deleteDataBlob = dataBlobContainer.GetBlobClient($"{userKey}/{dataName}{blobExtension}");
                     await deleteDataBlob.DeleteIfExistsAsync();
-                    logger.LogInformation("In DataStore.Delete, deleted blob data for {DataName}", dataName);
+                    LogDeleteAsyncBlobDeleted(logger, dataName);
                 }
 
                 // Now delete any accompanying image (both encrypted and unencrypted versions)
@@ -330,7 +323,7 @@ internal class DataStore<T> where T : StorageClass, new()
             }
             catch (RequestFailedException ex)
             {
-                logger.LogError(ex, "In DataStore.Delete, failed to delete blob data");
+                LogDeleteAsyncFailed(logger, ex);
                 return new StatusCodeResult(StatusCodes.Status500InternalServerError);
             }
         }
@@ -371,7 +364,7 @@ internal class DataStore<T> where T : StorageClass, new()
         // Validate 'before'
         if (before != null && !before.IsValidName())
         {
-            logger.LogError($"The 'before' specification is unacceptable, returning error");
+            LogEnumerateAsyncInvalidBefore(logger);
             return new BadRequestResult();
         }
 
@@ -379,8 +372,7 @@ internal class DataStore<T> where T : StorageClass, new()
         if (string.IsNullOrWhiteSpace(topString) || !int.TryParse(topString, out int top) || top > MaxItems || top < 1)
             return new BadRequestResult();
 
-        const string logMessageTemplate = "In DataStore.Enumerate, enumerate data in {TableName}, before = '{Before}'";
-        logger.LogInformation(logMessageTemplate, tableClient.Name, before);
+        LogEnumerateAsyncStart(logger, tableClient.Name, before);
         string query = $"PartitionKey eq '{userKey}'";
         if (!string.IsNullOrWhiteSpace(before))
             query += " and RowKey gt '" + before.Invert() + "'";
@@ -437,8 +429,7 @@ internal class DataStore<T> where T : StorageClass, new()
     {
         string? userKey = httpRequest.HttpContext.Items["userKey"] as string;
 
-        const string logMessageTemplate = "In DataStore.DeleteAllAsync, delete data in {TableName}";
-        logger.LogInformation(logMessageTemplate, tableClient.Name);
+        LogDeleteAllAsyncStart(logger, tableClient.Name);
 
         var deleteTasks = new List<Task>();
 
@@ -462,7 +453,7 @@ internal class DataStore<T> where T : StorageClass, new()
         }
 
         await Task.WhenAll(deleteTasks);
-        logger.LogInformation("In DataStore.DeleteAllAsync, deleted {successes} in {TableName}, failed to delete {failures}", deleteCount, tableClient.Name, failCount);
+        LogDeleteAllAsyncComplete(logger, deleteCount, tableClient.Name, failCount);
         return failCount > 0
             ? Utility.CreateFailedResult($"Failed to delete {failCount} items, deleted {deleteCount}.")
             : new OkObjectResult($"Deleted {deleteCount} items.");
@@ -490,8 +481,7 @@ internal class DataStore<T> where T : StorageClass, new()
     /// <returns>A task that represents the asynchronous cleanup operation.</returns>
     internal async Task CleanupAllUsersAsync()
     {
-        const string logMessageTemplate = "In DataStore.CleanupAllUsers, cleanup items in {TableName}";
-        logger.LogInformation(logMessageTemplate, tableClient.Name);
+        LogCleanupAllUsersStart(logger, tableClient.Name);
 
         string? filter = null;
         var entities = tableClient.QueryAsync<DataFormat>(
@@ -512,7 +502,7 @@ internal class DataStore<T> where T : StorageClass, new()
                 youngest = entity.RowKey.ToDateTime(); ;
                 previous = youngest;
                 currentSchedule = Schedule[0];
-                logger.LogInformation("In DataStore.CleanupAllUsers for {TableName}, switched to {PartKey}", tableClient.Name, partKey);
+                LogCleanupAllUsersSwitchedUser(logger, tableClient.Name, partKey);
             }
             else
             {
@@ -534,7 +524,7 @@ internal class DataStore<T> where T : StorageClass, new()
                 {
                     // This item is too close in time to the previous one, delete it.
                     await tableClient.DeleteEntityAsync(entity.PartitionKey, entity.RowKey);
-                    logger.LogInformation("In DataStore.CleanupAllUsers for {TableName}, deleted item for {Time}", tableClient.Name, dateTime);
+                    LogCleanupAllUsersDeletedItem(logger, tableClient.Name, dateTime);
                 }
                 else
                 {
@@ -544,4 +534,73 @@ internal class DataStore<T> where T : StorageClass, new()
             }
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In DataStore.PutAsync, upsert data to {TableName}[{UserKey}, {DataName}({InvertedDataName})")]
+    static partial void LogPutAsyncStarting(ILogger logger, string tableName, string userKey, string dataName, string invertedDataName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "In DataStore.PutAsync, exactly one of fields and forms may be nonzero")]
+    static partial void LogPutAsyncFieldFilesError(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "In DataStore.PutAsync, failed to delete alternate large data blob ({DataLength} bytes) in blob storage")]
+    static partial void LogPutAsyncFailedDeleteAlternateBlob(ILogger logger, int DataLength);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In DataStore.PutAsync, stored large data ({DataLength} bytes) in blob storage")]
+    static partial void LogPutAsyncStoredLargeDataBlob(ILogger logger, int DataLength);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "In DataStore.PutAsync, failed to store large data in blob storage")]
+    static partial void LogPutAsyncFailedStoreBlob(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In DataStore.GetAsync, retrieve data from {TableName}[{UserKey}, {DataName}({InvertedDataName})]")]
+    static partial void LogGetAsyncRetrieve(ILogger logger, string TableName, string UserKey, string DataName, string InvertedDataName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "In DataStore.GetAsync, invalid name '{DataName}'")]
+    static partial void LogGetAsyncInvalidName(ILogger logger, string DataName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In DataStore.GetAsync, {DataName} was a legal data name")]
+    static partial void LogGetAsyncLegalName(ILogger logger, string DataName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In DataStore.GetAsync, got data, length = {DataLength}, encrypted = {IsEncrypted}, storedInBlob = {IsStoredInBlob}")]
+    static partial void LogGetAsyncGotData(ILogger logger, long DataLength, bool IsEncrypted, bool IsStoredInBlob);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In DataStore.GetAsync, retrieved large data ({DataLength} bytes) from blob storage")]
+    static partial void LogGetAsyncRetrievedBlob(ILogger logger, int DataLength);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "In DataStore.GetAsync, failed to retrieve data from blob storage")]
+    static partial void LogGetAsyncFailedBlob(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "In DataStore.GetAsync, no data found")]
+    static partial void LogGetAsyncNoDataFound(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "In DataStore.GetAsync, faulted")]
+    static partial void LogGetAsyncFaulted(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In DataStore.Delete, delete data at {TableName}[{UserKey}, {DataName}({InvertedDataName})]")]
+    static partial void LogDeleteAsyncStart(ILogger logger, string TableName, string UserKey, string DataName, string InvertedDataName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In DataStore.Delete, deleted blob data for {DataName}")]
+    static partial void LogDeleteAsyncBlobDeleted(ILogger logger, string DataName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "In DataStore.Delete, failed to delete blob data")]
+    static partial void LogDeleteAsyncFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "The 'before' specification is unacceptable, returning error")]
+    static partial void LogEnumerateAsyncInvalidBefore(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In DataStore.Enumerate, enumerate data in {TableName}, before = '{Before}'")]
+    static partial void LogEnumerateAsyncStart(ILogger logger, string TableName, string? Before);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In DataStore.DeleteAllAsync, delete data in {TableName}")]
+    static partial void LogDeleteAllAsyncStart(ILogger logger, string TableName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In DataStore.DeleteAllAsync, deleted {Successes} in {TableName}, failed to delete {Failures}")]
+    static partial void LogDeleteAllAsyncComplete(ILogger logger, int Successes, string TableName, int Failures);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In DataStore.CleanupAllUsers, cleanup items in {TableName}")]
+    static partial void LogCleanupAllUsersStart(ILogger logger, string TableName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In DataStore.CleanupAllUsers for {TableName}, switched to {PartKey}")]
+    static partial void LogCleanupAllUsersSwitchedUser(ILogger logger, string TableName, string PartKey);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In DataStore.CleanupAllUsers for {TableName}, deleted item for {Time}")]
+    static partial void LogCleanupAllUsersDeletedItem(ILogger logger, string TableName, DateTime Time);
 }

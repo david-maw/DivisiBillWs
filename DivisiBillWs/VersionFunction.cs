@@ -2,10 +2,11 @@ using DivisiBillWs.Generated; // The build time information  created by the msbu
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace DivisiBillWs;
 
-public class VersionFunction(ILoggerFactory loggerFactory, IHostEnvironment environmentParam)
+public partial class VersionFunction(ILoggerFactory loggerFactory, IHostEnvironment environmentParam)
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<VersionFunction>();
     private readonly IHostEnvironment environment = environmentParam;
@@ -25,7 +26,7 @@ public class VersionFunction(ILoggerFactory loggerFactory, IHostEnvironment envi
 
         var _ = httpRequest; // Use the parameter to avoid a warning
 
-        _logger.LogInformation("The 'version' web service function is processing a request.");
+        LogVersionFunctionProcessing();
 
         // Add these lines to test timeout handling in the client
         //Task.Delay(8000).Wait();
@@ -47,4 +48,7 @@ public class VersionFunction(ILoggerFactory loggerFactory, IHostEnvironment envi
             Sentry_DSN: {(string.IsNullOrEmpty(Generated.BuildInfo.DivisiBillSentryDsn) ? "Missing" : "Present")} 
             """);
     }
+
+    [LoggerMessage(LogLevel.Information, "The 'version' web service function is processing a request.")]
+    private partial void LogVersionFunctionProcessing();
 }

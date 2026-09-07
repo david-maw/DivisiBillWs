@@ -8,7 +8,7 @@ using System.Diagnostics;
 
 namespace DivisiBillWs;
 
-internal class MigrationClass(ILogger logger)
+internal partial class MigrationClass(ILogger logger)
 {
     private readonly LicenseStore licenseStore = new(logger);
     private readonly BlobContainerClient blobContainer = new(Environment.GetEnvironmentVariable("AzureWebJobsStorage"), "images");
@@ -24,6 +24,7 @@ internal class MigrationClass(ILogger logger)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
         #region Migrate Blobs
+        LogBlobMigrationStarted(oldKey, newKey);
         await blobContainer.CreateIfNotExistsAsync();
         var blobsForOrderId = await GetBlobsWithPrefixAsync(oldKey, httpRequest.HttpContext.RequestAborted);
         int successCount = 0;
@@ -33,9 +34,7 @@ internal class MigrationClass(ILogger logger)
             successCount = await RenameBlobsBatchAsync(oldKey, newKey, blobsForOrderId, httpRequest.HttpContext.RequestAborted);
             failureCount = blobsForOrderId.Count - successCount;
             if (failureCount > 0)
-            {
-                logger.LogWarning($"Failed to rename {failureCount} out of {blobsForOrderId.Count} blobs for OrderId: {oldKey}");
-            }
+                LogBlobRenameFailure(failureCount, blobsForOrderId.Count, oldKey);
         }
         #endregion
         #region Migrate Tables
@@ -46,6 +45,7 @@ internal class MigrationClass(ILogger logger)
         stopwatch.Stop();
         string resultMsg = (Utility.IsDebug ? $"OrderId: {oldKey}\nto UserKey: {newKey} in {stopwatch.ElapsedMilliseconds} ms,\n" : "")
             + $"Migrated Images:{successCount - failureCount}, Meals: {migratedMealCount}, PersonLists: {migratedPersonListCount}, VenueLists: {migratedVenueListCount} ";
+        LogMigrationSummary(oldKey, newKey, stopwatch.ElapsedMilliseconds, successCount - failureCount, migratedMealCount, migratedPersonListCount, migratedVenueListCount);
         return new OkObjectResult(resultMsg);
     }
     #region Blob Handling
@@ -131,7 +131,7 @@ internal class MigrationClass(ILogger logger)
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError("Failed to rename blob {name}: {message}", blob.Name, ex.Message);
+                    LogBlobRenameFailed(blob.Name, ex.Message);
                 }
             }
             finally
@@ -151,11 +151,9 @@ internal class MigrationClass(ILogger logger)
     // The tables affected are Meal, PersonList and VenueList.
     private async Task<int> MigrateTableDataAsync<T>(string oldKey, string newKey, CancellationToken cancellationToken = default) where T : StorageClass, new()
     {
-        //        internal readonly DataStore<VenueListStorage> venueListStorage = new(logger, licenseStore);
+        LogTableDataMigrationStarted(typeof(T).Name, oldKey, newKey);
 
         DataStore<T> storage = new(logger, licenseStore);
-
-        // var itemNames = await storage.SimpleEnumerateAsync(oldKey); // for testing
 
         int movedItemCount = await MovePartitionAsync(storage.TableClient, oldKey, newKey, cancellationToken);
 
@@ -245,4 +243,18 @@ internal class MigrationClass(ILogger logger)
     }
     #endregion
 
+    [LoggerMessage(LogLevel.Warning, "Failed to rename {failureCount} out of {totalCount} blobs for OrderId: {oldKey}")]
+    private partial void LogBlobRenameFailure(int failureCount, int totalCount, string oldKey);
+
+    [LoggerMessage(LogLevel.Error, "Failed to rename blob {name}: {message}")]
+    private partial void LogBlobRenameFailed(string name, string message);
+
+    [LoggerMessage(LogLevel.Information, "Migrated {oldKey} to {newKey} in {elapsedMilliseconds} ms, Migrated Images: {imageCount}, Meals: {mealCount}, PersonLists: {personListCount}, VenueLists: {venueListCount}")]
+    private partial void LogMigrationSummary(string oldKey, string newKey, long elapsedMilliseconds, int imageCount, int mealCount, int personListCount, int venueListCount);
+
+    [LoggerMessage(LogLevel.Information, "Starting migration of blobs from {oldKey} to {newKey}")]
+    private partial void LogBlobMigrationStarted(string oldKey, string newKey);
+
+    [LoggerMessage(LogLevel.Information, "Starting migration of table data for type {typeName} from {oldKey} to {newKey}")]
+    private partial void LogTableDataMigrationStarted(string typeName, string oldKey, string newKey);
 }

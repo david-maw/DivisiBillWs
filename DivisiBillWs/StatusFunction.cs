@@ -1,9 +1,10 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace DivisiBillWs;
 
-public class StatusFunction(ILoggerFactory loggerFactory)
+public partial class StatusFunction(ILoggerFactory loggerFactory)
 {
     private readonly ILogger _logger = loggerFactory.CreateLogger<StatusFunction>();
 
@@ -19,7 +20,7 @@ public class StatusFunction(ILoggerFactory loggerFactory)
         string id)
     {
         if (_logger.IsEnabled(LogLevel.Information))
-            _logger.LogInformation("status function processing request with id: {Id}", id);
+            LogStatusFunctionProcessing(id);
 
         var response = new
         {
@@ -31,4 +32,7 @@ public class StatusFunction(ILoggerFactory loggerFactory)
 
         return new OkObjectResult(response);
     }
+
+    [LoggerMessage(LogLevel.Information, "status function processing request with id: {Id}")]
+    private partial void LogStatusFunctionProcessing(string id);
 }

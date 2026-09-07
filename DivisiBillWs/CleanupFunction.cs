@@ -1,6 +1,8 @@
+using Microsoft.Extensions.Logging;
+
 namespace DivisiBillWs;
 
-public class CleanupFunction
+public partial class CleanupFunction
 {
     private readonly ILogger _logger;
     internal readonly DataStore<VenueListStorage> venueListStorage;
@@ -16,13 +18,19 @@ public class CleanupFunction
     [Function("CleanupFunction")]
     public async Task Run([TimerTrigger("0 0 9 * * Wed")] TimerInfo myTimer) // Run at 9 am every Wednesday
     {
-        _logger.LogInformation("CleanupFunction executed at: {executionTime}", DateTime.Now);
-        
+        LogCleanupFunctionExecuted(DateTime.Now);
+
         if (myTimer.ScheduleStatus is not null)
         {
-            _logger.LogInformation("In CleanupFunction, next timer schedule at: {nextSchedule}", myTimer.ScheduleStatus.Next);
+            LogCleanupFunctionNextSchedule(myTimer.ScheduleStatus.Next);
         }
         await venueListStorage.CleanupAllUsersAsync();
         await personListStorage.CleanupAllUsersAsync();
     }
+
+    [LoggerMessage(LogLevel.Information, "CleanupFunction executed at: {executionTime}")]
+    private partial void LogCleanupFunctionExecuted(DateTime executionTime);
+
+    [LoggerMessage(LogLevel.Information, "In CleanupFunction, next timer schedule at: {nextSchedule}")]
+    private partial void LogCleanupFunctionNextSchedule(DateTime nextSchedule);
 }

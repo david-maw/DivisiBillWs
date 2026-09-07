@@ -1,9 +1,10 @@
 ﻿using Azure;
 using Azure.Data.Tables;
+using Microsoft.Extensions.Logging;
 
 namespace DivisiBillWs;
 
-internal class LicenseStore
+internal partial class LicenseStore
 {
     /// <summary>
     /// A class to manage the storage of tokens in Azure Table Storage, indexed by token value
@@ -88,22 +89,18 @@ internal class LicenseStore
         {
             if (IsExpiring(proTokenInfo.TimeExpired))
             {
-                logger.LogInformation("In LicenseStore.GetTokenIfNew for {userKey} found {tokenTableName}[{partitionKeyName}, {rowKey}] expiring, returning a replacement",
-                    userKey, tokenTable.Name, PartitionKeyName, proTokenInfo.RowKey);
+                LogGetTokenIfNewExpiring(logger, userKey, tokenTable.Name, PartitionKeyName, proTokenInfo.RowKey);
                 if (InternalClearToken(userKey, proTokenInfo))
                     return GenerateToken(userKey);
                 else
-                    logger.LogInformation("In LicenseStore.GetTokenIfNew for {userKey} found {tokenTableName}[{partitionKeyName}, {rowKey}] but it went away, returning null",
-                        userKey, tokenTable.Name, PartitionKeyName, proTokenInfo.RowKey);
+                    LogGetTokenIfNewWentAway(logger, userKey, tokenTable.Name, PartitionKeyName, proTokenInfo.RowKey);
             }
             else
-                logger.LogInformation("In LicenseStore.GetTokenIfNew for {userKey} found {tokenTableName}[{partitionKeyName}, {rowKey}] is not expiring, returning null",
-                    userKey, tokenTable.Name, PartitionKeyName, proTokenInfo.RowKey);
+                LogGetTokenIfNewNotExpiring(logger, userKey, tokenTable.Name, PartitionKeyName, proTokenInfo.RowKey);
         }
         else // There is no stored token
         {
-            logger.LogInformation("In LicenseStore.GetTokenIfNew for {userKey} not found in {tokenTableName}, returning a new one",
-                userKey, tokenTable.Name);
+            LogGetTokenIfNewNotFound(logger, userKey, tokenTable.Name);
             return GenerateToken(userKey);
         }
         return null;
@@ -125,8 +122,7 @@ internal class LicenseStore
             else
             {
                 string responseInfo = (response != null) ? ", response = " + response.ToString() : "";
-                logger.LogError("In LicenseStore.ClearToken for {userKey} found {tokenTableName}[{partitionKeyName}, {rowKey}], unable to remove it, throwing exception",
-                    userKey, tokenTable.Name, PartitionKeyName, oldTokenInfo.RowKey);
+                LogClearTokenFailed(logger, userKey, tokenTable.Name, PartitionKeyName, oldTokenInfo.RowKey);
                 throw new ApplicationException("Token Removal Failed" + responseInfo);
             }
         }
@@ -155,14 +151,12 @@ internal class LicenseStore
         var response = tokenTable.UpsertEntity(info);
         if (!response.IsError)
         {
-            logger.LogInformation("In LicenseStore.GenerateToken, {tokenTableName}[{partitionKeyName}, {rowKey}] has value, returning {token}",
-                tokenTable.Name, info.PartitionKey, info.RowKey, Token);
+            LogGenerateTokenSuccess(logger, tokenTable.Name, info.PartitionKey, info.RowKey, Token);
             return Token;
         }
         else
         {
-            logger.LogError("In LicenseStore.GenerateToken, {tokenTableName}[{partitionKeyName}, {rowKey}] not inserted, throwing exception",
-                tokenTable.Name, info.PartitionKey, info.RowKey);
+            LogGenerateTokenFailed(logger, tokenTable.Name, info.PartitionKey, info.RowKey);
             throw new ApplicationException("incomingToken generation failed");
         }
     }
@@ -186,18 +180,15 @@ internal class LicenseStore
             if (tokenInfoResponse!.Value!.TimeExpired > DateTime.UtcNow)
             {
                 // The purchase was already validated with the app store, now we know it's one of ours
-                logger.LogInformation("In LicenseStore.GetUserKeyFromToken, {tokenTableName}[{partitionKeyName}, {incomingToken}] is current, returning true",
-                    tokenTable.Name, PartitionKeyName, incomingToken);
+                LogGetUserKeyFromTokenCurrent(logger, tokenTable.Name, PartitionKeyName, incomingToken);
                 // This means we can get the proLicense value from the token table
                 return tokenInfoResponse.Value.ProOrderId;
             }
             else
-                logger.LogInformation("In LicenseStore.GetUserKeyFromToken, {tokenTableName}[{partitionKeyName}, {incomingToken}] is not current, returning false",
-                    tokenTable.Name, PartitionKeyName, incomingToken);
+                LogGetUserKeyFromTokenNotCurrent(logger, tokenTable.Name, PartitionKeyName, incomingToken);
         }
         else
-            logger.LogInformation("In LicenseStore.GetUserKeyFromToken, {tokenTableName}[{partitionKeyName}, {incomingToken}] not found, returning false",
-                tokenTable.Name, PartitionKeyName, incomingToken);
+            LogGetUserKeyFromTokenNotFound(logger, tokenTable.Name, PartitionKeyName, incomingToken);
         return null;
     }
 
@@ -220,21 +211,18 @@ internal class LicenseStore
         {
             if (purchaseInfo.PurchaseToken.Equals(androidPurchase.PurchaseToken))
             {
-                logger.LogInformation("In LicenseStore.GetScans, {tableName}[{partitionKeyName}, {orderId}] has value, returning {scansLeft}",
-                    tableClient.Name, PartitionKeyName, androidPurchase.OrderId, purchaseInfo.ScansLeft);
+                LogGetScansSuccess(logger, tableClient.Name, PartitionKeyName, androidPurchase.OrderId, purchaseInfo.ScansLeft);
                 return purchaseInfo.ScansLeft;
             }
             else
             {
-                logger.LogError("In LicenseStore.GetScans, {tableName}[{partitionKeyName}, {orderId}] stored purchase token does not match, returning error",
-                    tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
+                LogGetScansTokenMismatch(logger, tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
                 return -1;
             }
         }
         else
         {
-            logger.LogError("In LicenseStore.GetScans, {tableName}[{partitionKeyName}, {orderId}] not found, returning error",
-                tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
+            LogGetScansNotFound(logger, tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
             return -1;
         }
     }
@@ -258,21 +246,18 @@ internal class LicenseStore
         {
             if (purchaseInfo.PurchaseToken.Equals(androidPurchase.PurchaseToken))
             {
-                logger.LogInformation("In LicenseStore.GetMigrationSource, {tableName}[{partitionKeyName}, {orderId}] has value, returning {migrationSource}",
-                    tableClient.Name, PartitionKeyName, androidPurchase.OrderId, purchaseInfo.MigrationSource);
+                LogGetMigrationSourceSuccess(logger, tableClient.Name, PartitionKeyName, androidPurchase.OrderId, purchaseInfo.MigrationSource);
                 return purchaseInfo.MigrationSource;
             }
             else
             {
-                logger.LogError("In LicenseStore.GetMigrationSource, {tableName}[{partitionKeyName}, {orderId}] stored purchase token does not match, returning error",
-                    tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
+                LogGetMigrationSourceTokenMismatch(logger, tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
                 return null;
             }
         }
         else
         {
-            logger.LogError("In LicenseStore.GetMigrationSource, {tableName}[{partitionKeyName}, {orderId}] not found, returning error",
-                tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
+            LogGetMigrationSourceNotFound(logger, tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
             return null;
         }
     }
@@ -294,25 +279,21 @@ internal class LicenseStore
             );
         if (purchaseInfoResponse.HasValue)
         {
-            logger.LogError("In LicenseStore.Record, {tableName}[{partitionKeyName}, {orderId}] has value, returning error",
-                tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
+            LogRecordAlreadyExists(logger, tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
             return false;
         }
 
-        logger.LogInformation("In LicenseStore.Record, {tableName}[{partitionKeyName}, {orderId}] does not exist",
-            tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
+        LogRecordNotExists(logger, tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
 
         // The PurchaseToken should not be in use yet, make sure that is so to prevent token reuse
         bool alreadyInUse = tableClient.QueryAsync<PurchaseInfo>(r => r.PurchaseToken.Equals(androidPurchase.PurchaseToken)).ToBlockingEnumerable().Any();
         if (alreadyInUse)
         {
-            logger.LogError("In LicenseStore.Record, {purchaseToken}] is already used, so we cannot add the license",
-                androidPurchase.PurchaseToken);
+            LogRecordTokenAlreadyUsed(logger, androidPurchase.PurchaseToken);
             return false;
         }
 
-        logger.LogInformation("In LicenseStore.Record, {purchaseToken}] is unknown to us, so we can add the license",
-            androidPurchase.PurchaseToken);
+        LogRecordTokenUnknown(logger, androidPurchase.PurchaseToken);
 
         // Create a new entry
         PurchaseInfo purchaseInfo = new()
@@ -376,7 +357,7 @@ internal class LicenseStore
     {
         ArgumentException.ThrowIfNullOrEmpty(orderId);
 
-        logger.LogInformation("In DecrementScans, orderId = {orderId}", orderId);
+        LogDecrementScansStart(logger, orderId);
 
         NullableResponse<PurchaseInfo> purchaseInfoResponse = await tableClient.GetEntityIfExistsAsync<PurchaseInfo>(
             rowKey: orderId,
@@ -402,7 +383,7 @@ internal class LicenseStore
     {
         ArgumentException.ThrowIfNullOrEmpty(orderId);
 
-        logger.LogInformation("In UpdateTimeUsed, orderId = {orderId}", orderId);
+        LogUpdateTimeUsedStart(logger, orderId);
 
         NullableResponse<PurchaseInfo> purchaseInfoResponse = await tableClient.GetEntityIfExistsAsync<PurchaseInfo>(
             rowKey: orderId,
@@ -418,5 +399,69 @@ internal class LicenseStore
     }
 
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "In LicenseStore.GetTokenIfNew for {userKey} found {tokenTableName}[{partitionKeyName}, {rowKey}] expiring, returning a replacement")]
+    static partial void LogGetTokenIfNewExpiring(ILogger logger, string userKey, string tokenTableName, string partitionKeyName, string rowKey);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "In LicenseStore.GetTokenIfNew for {userKey} found {tokenTableName}[{partitionKeyName}, {rowKey}] but it went away, returning null")]
+    static partial void LogGetTokenIfNewWentAway(ILogger logger, string userKey, string tokenTableName, string partitionKeyName, string rowKey);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In LicenseStore.GetTokenIfNew for {userKey} found {tokenTableName}[{partitionKeyName}, {rowKey}] is not expiring, returning null")]
+    static partial void LogGetTokenIfNewNotExpiring(ILogger logger, string userKey, string tokenTableName, string partitionKeyName, string rowKey);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In LicenseStore.GetTokenIfNew for {userKey} not found in {tokenTableName}, returning a new one")]
+    static partial void LogGetTokenIfNewNotFound(ILogger logger, string userKey, string tokenTableName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "In LicenseStore.ClearToken for {userKey} found {tokenTableName}[{partitionKeyName}, {rowKey}], unable to remove it, throwing exception")]
+    static partial void LogClearTokenFailed(ILogger logger, string userKey, string tokenTableName, string partitionKeyName, string rowKey);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In LicenseStore.GenerateToken, {tokenTableName}[{partitionKeyName}, {rowKey}] has value, returning {token}")]
+    static partial void LogGenerateTokenSuccess(ILogger logger, string tokenTableName, string partitionKeyName, string rowKey, string token);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "In LicenseStore.GenerateToken, {tokenTableName}[{partitionKeyName}, {rowKey}] not inserted, throwing exception")]
+    static partial void LogGenerateTokenFailed(ILogger logger, string tokenTableName, string partitionKeyName, string rowKey);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In LicenseStore.GetUserKeyFromToken, {tokenTableName}[{partitionKeyName}, {incomingToken}] is current, returning true")]
+    static partial void LogGetUserKeyFromTokenCurrent(ILogger logger, string tokenTableName, string partitionKeyName, string incomingToken);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In LicenseStore.GetUserKeyFromToken, {tokenTableName}[{partitionKeyName}, {incomingToken}] is not current, returning false")]
+    static partial void LogGetUserKeyFromTokenNotCurrent(ILogger logger, string tokenTableName, string partitionKeyName, string incomingToken);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In LicenseStore.GetUserKeyFromToken, {tokenTableName}[{partitionKeyName}, {incomingToken}] not found, returning false")]
+    static partial void LogGetUserKeyFromTokenNotFound(ILogger logger, string tokenTableName, string partitionKeyName, string incomingToken);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In LicenseStore.GetScans, {tableName}[{partitionKeyName}, {orderId}] has value, returning {scansLeft}")]
+    static partial void LogGetScansSuccess(ILogger logger, string tableName, string partitionKeyName, string orderId, int scansLeft);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "In LicenseStore.GetScans, {tableName}[{partitionKeyName}, {orderId}] stored purchase token does not match, returning error")]
+    static partial void LogGetScansTokenMismatch(ILogger logger, string tableName, string partitionKeyName, string orderId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "In LicenseStore.GetScans, {tableName}[{partitionKeyName}, {orderId}] not found, returning error")]
+    static partial void LogGetScansNotFound(ILogger logger, string tableName, string partitionKeyName, string orderId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In LicenseStore.GetMigrationSource, {tableName}[{partitionKeyName}, {orderId}] has value, returning {migrationSource}")]
+    static partial void LogGetMigrationSourceSuccess(ILogger logger, string tableName, string partitionKeyName, string orderId, string migrationSource);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "In LicenseStore.GetMigrationSource, {tableName}[{partitionKeyName}, {orderId}] stored purchase token does not match, returning error")]
+    static partial void LogGetMigrationSourceTokenMismatch(ILogger logger, string tableName, string partitionKeyName, string orderId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "In LicenseStore.GetMigrationSource, {tableName}[{partitionKeyName}, {orderId}] not found, returning error")]
+    static partial void LogGetMigrationSourceNotFound(ILogger logger, string tableName, string partitionKeyName, string orderId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "In LicenseStore.Record, {tableName}[{partitionKeyName}, {orderId}] has value, returning error")]
+    static partial void LogRecordAlreadyExists(ILogger logger, string tableName, string partitionKeyName, string orderId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In LicenseStore.Record, {tableName}[{partitionKeyName}, {orderId}] does not exist")]
+    static partial void LogRecordNotExists(ILogger logger, string tableName, string partitionKeyName, string orderId);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "In LicenseStore.Record, {purchaseToken}] is already used, so we cannot add the license")]
+    static partial void LogRecordTokenAlreadyUsed(ILogger logger, string purchaseToken);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In LicenseStore.Record, {purchaseToken}] is unknown to us, so we can add the license")]
+    static partial void LogRecordTokenUnknown(ILogger logger, string purchaseToken);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In DecrementScans, orderId = {orderId}")]
+    static partial void LogDecrementScansStart(ILogger logger, string orderId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In UpdateTimeUsed, orderId = {orderId}")]
+    static partial void LogUpdateTimeUsedStart(ILogger logger, string orderId);
 }

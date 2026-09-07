@@ -1,9 +1,10 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace DivisiBillWs;
 
-public class PersonListFunction
+public partial class PersonListFunction
 {
     private readonly ILogger logger;
     internal readonly DataStore<PersonListStorage> storage;
@@ -30,7 +31,7 @@ public class PersonListFunction
     public async Task<IActionResult> Run([HttpTrigger(AuthorizationLevel.Function, "get", "put", "delete",
     Route = "personlist/{id}")] HttpRequest httpRequest, string id)
     {
-        logger.LogInformation($"PersonListFunction HTTP trigger function processing a {httpRequest.Method} request for ID {id}");
+        LogPersonListFunctionProcessing(httpRequest.Method, id);
         if (httpRequest.HttpContext.Items["userKey"] is not string userKey)
             return new UnauthorizedResult(); // Should never happen because the middleware takes care of this
         // Already authorized, so call the appropriate function
@@ -47,7 +48,7 @@ public class PersonListFunction
     [Function("PersonLists")]
     public async Task<IActionResult> EnumerateAsync([HttpTrigger(AuthorizationLevel.Function, "get", "delete")] HttpRequest httpRequest)
     {
-        logger.LogInformation("PersonLists function processing a {method} request.", httpRequest.Method);
+        LogPersonListsProcessing(httpRequest.Method);
         Task<IActionResult> actionResult = httpRequest.Method switch
         {
             "GET" => storage.EnumerateAsync(httpRequest),
@@ -56,4 +57,10 @@ public class PersonListFunction
         };
         return await actionResult;
     }
+
+    [LoggerMessage(LogLevel.Information, "PersonListFunction HTTP trigger function processing a {method} request for ID {id}")]
+    private partial void LogPersonListFunctionProcessing(string method, string id);
+
+    [LoggerMessage(LogLevel.Information, "PersonLists function processing a {method} request.")]
+    private partial void LogPersonListsProcessing(string method);
 }

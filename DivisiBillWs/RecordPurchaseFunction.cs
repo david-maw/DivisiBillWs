@@ -1,9 +1,10 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace DivisiBillWs;
 
-public class RecordPurchaseFunction
+public partial class RecordPurchaseFunction
 {
     private readonly ILogger logger;
 
@@ -34,23 +35,22 @@ public class RecordPurchaseFunction
     internal static async Task<bool> RecordAsync(AndroidPurchase? androidPurchase, ILogger logger, LicenseStore licenseStore)
     {
         if (androidPurchase == null)
-            logger.LogError("In RecordPurchaseFunction, could not deserialize a purchase with an OrderId");
+            LogDeserializationError(logger);
         else if (string.IsNullOrEmpty(androidPurchase.PackageName))
-            logger.LogError("In RecordPurchaseFunction, could not extract a {PropertyName}", nameof(AndroidPurchase.PackageName));
+            LogMissingProperty(logger, nameof(AndroidPurchase.PackageName));
         else if (!androidPurchase.PackageName.Equals(LicenseStore.ExpectedPackageName)) // only DivisiBill Licenses can be used
-            logger.LogError("In RecordPurchaseFunction, package name was not com.autoplus.divisibill: {PackageName}", androidPurchase.PackageName);
+            LogInvalidPackageName(logger, androidPurchase.PackageName);
         else if (string.IsNullOrEmpty(androidPurchase.ProductId))
-            logger.LogError("In RecordPurchaseFunction, could not extract a {PropertyName}", nameof(AndroidPurchase.ProductId));
+            LogMissingProperty(logger, nameof(AndroidPurchase.ProductId));
         else if (string.IsNullOrEmpty(androidPurchase.OrderId))
-            logger.LogError("In RecordPurchaseFunction, could not extract a {PropertyName}", nameof(AndroidPurchase.OrderId));
+            LogMissingProperty(logger, nameof(AndroidPurchase.OrderId));
         else if (string.IsNullOrEmpty(androidPurchase.ObfuscatedAccountId))
-            logger.LogError("In RecordPurchaseFunction, could not extract an {PropertyName}", nameof(AndroidPurchase.ObfuscatedAccountId));
+            LogMissingProperty(logger, nameof(AndroidPurchase.ObfuscatedAccountId));
         else if (string.IsNullOrEmpty(androidPurchase.PurchaseToken))
-            logger.LogError("In RecordPurchaseFunction, could not extract a {PropertyName}", nameof(AndroidPurchase.PurchaseToken));
+            LogMissingProperty(logger, nameof(AndroidPurchase.PurchaseToken));
         else
         {
-            logger.LogInformation("In RecordPurchaseFunction, PackageName:{PackageName}, OrderId:{OrderId}, ProductId:{ProductId}, Quantity:{Quantity}, ObfuscatedAccountid:{ObfuscatedAccountId}, PurchaseToken:{PurchaseToken}",
-                androidPurchase.PackageName, androidPurchase.OrderId, androidPurchase.ProductId, androidPurchase.Quantity, androidPurchase.ObfuscatedAccountId, androidPurchase.PurchaseToken);
+            LogRecordPurchaseDetails(logger, androidPurchase.PackageName, androidPurchase.OrderId, androidPurchase.ProductId, androidPurchase.Quantity, androidPurchase.ObfuscatedAccountId, androidPurchase.PurchaseToken);
             bool verifiedWithStore = false;
             int? verifiedAcknowledgementState = null;
             if (androidPurchase.IsSubscription)
@@ -64,47 +64,47 @@ public class RecordPurchaseFunction
                     {
                         verifiedWithStore = true;
                         verifiedAcknowledgementState = verifiedPurchase.AcknowledgementState.Equals("ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED") ? 1 : 0;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogGoogleVerificationError(logger, ex.Message);
+                        }
                     }
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError("In RecordPurchaseFunction, exception calling Google to check purchase: {ExceptionMessage}", ex.Message);
-                }
-            }
-            else
-            {
-                try
-                {
+                    else
+                    {
+                        try
+                        {
                     Google.Apis.AndroidPublisher.v3.Data.ProductPurchase? verifiedPurchase = LicenseCheck.GetProductPurchase(
                         androidPurchase.PackageName, androidPurchase.ProductId, androidPurchase.PurchaseToken);
                     if (verifiedPurchase != null)
                     {
                         verifiedWithStore = true;
                         verifiedAcknowledgementState = verifiedPurchase.AcknowledgementState;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            LogGoogleVerificationError(logger, ex.Message);
+                        }
                     }
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError("In RecordPurchaseFunction, exception calling Google to check purchase: {ExceptionMessage}", ex.Message);
-                }
-            }
-            if (verifiedWithStore)
-            {
-                logger.LogInformation("In RecordPurchaseFunction, successfully verified {AcknowledgementState} purchase with Google, checking license table", verifiedAcknowledgementState == 1 ? "acknowledged" : "unacknowledged");
-                // All is well so far and we have a legitimately issued license
-                // Now ensure it is not already known and if not, remember it for the future
-                bool recorded = await licenseStore.RecordAsync(androidPurchase);
-                if (recorded && verifiedAcknowledgementState == 0)
-                {
-                    if (androidPurchase.IsSubscription)
-                        LicenseCheck.AcknowledgeSubscriptionPurchase(androidPurchase.PackageName, androidPurchase.ProductId, androidPurchase.PurchaseToken);
+                    if (verifiedWithStore)
+                    {
+                        LogPurchaseVerified(logger, verifiedAcknowledgementState == 1 ? "acknowledged" : "unacknowledged");
+                        // All is well so far and we have a legitimately issued license
+                        // Now ensure it is not already known and if not, remember it for the future
+                        bool recorded = await licenseStore.RecordAsync(androidPurchase);
+                        if (recorded && verifiedAcknowledgementState == 0)
+                        {
+                            if (androidPurchase.IsSubscription)
+                                LicenseCheck.AcknowledgeSubscriptionPurchase(androidPurchase.PackageName, androidPurchase.ProductId, androidPurchase.PurchaseToken);
+                            else
+                                LicenseCheck.AcknowledgeProductPurchase(androidPurchase.PackageName, androidPurchase.ProductId, androidPurchase.PurchaseToken);
+                        }
+                        return recorded;
+                    }
                     else
-                        LicenseCheck.AcknowledgeProductPurchase(androidPurchase.PackageName, androidPurchase.ProductId, androidPurchase.PurchaseToken);
-                }
-                return recorded;
-            }
-            else
-                logger.LogError("In RecordPurchaseFunction, could not verify purchase with Google");
+                        LogPurchaseVerificationFailed(logger);
         }
         return false;
     }
@@ -114,7 +114,7 @@ public class RecordPurchaseFunction
     [Function(nameof(RecordAndroidPurchase))]
     public async Task<IActionResult> RecordAndroidPurchase([HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequest httpRequest)
     {
-        logger.LogInformation("The '{name}' web service function is processing a request.", nameof(RecordAndroidPurchase));
+        LogRecordAndroidPurchaseProcessing();
         // Ensure content is a form
         if (!httpRequest.ContentType?.Contains("application/x-www-form-urlencoded") ?? true)
             return new BadRequestObjectResult("Invalid content type");
@@ -140,13 +140,13 @@ public class RecordPurchaseFunction
             // Deserialize the (now trusted) license
             androidPurchase = AndroidPurchase.FromJson(purchaseJson);
 
-            logger.LogInformation($"successfully deserialized androidPurchase from request");
+            LogAndroidPurchaseDeserialized();
             if (string.IsNullOrWhiteSpace(androidPurchase?.OrderId))
                 return new BadRequestResult();
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "In 'recordpurchase', Exception deserializing product");
+            LogRecordPurchaseDeserializationError(ex);
             return new BadRequestResult();
         }
 
@@ -156,4 +156,34 @@ public class RecordPurchaseFunction
             ? new OkResult()
             : new BadRequestResult();
     }
+
+    [LoggerMessage(LogLevel.Error, "In RecordPurchaseFunction, could not deserialize a purchase with an OrderId")]
+    private static partial void LogDeserializationError(ILogger logger);
+
+    [LoggerMessage(LogLevel.Error, "In RecordPurchaseFunction, could not extract a {PropertyName}")]
+    private static partial void LogMissingProperty(ILogger logger, string PropertyName);
+
+    [LoggerMessage(LogLevel.Error, "In RecordPurchaseFunction, package name was not com.autoplus.divisibill: {PackageName}")]
+    private static partial void LogInvalidPackageName(ILogger logger, string PackageName);
+
+    [LoggerMessage(LogLevel.Information, "In RecordPurchaseFunction, PackageName:{PackageName}, OrderId:{OrderId}, ProductId:{ProductId}, Quantity:{Quantity}, ObfuscatedAccountid:{ObfuscatedAccountId}, PurchaseToken:{PurchaseToken}")]
+    private static partial void LogRecordPurchaseDetails(ILogger logger, string PackageName, string OrderId, string ProductId, int Quantity, string ObfuscatedAccountId, string PurchaseToken);
+
+    [LoggerMessage(LogLevel.Error, "In RecordPurchaseFunction, exception calling Google to check purchase: {ExceptionMessage}")]
+    private static partial void LogGoogleVerificationError(ILogger logger, string ExceptionMessage);
+
+    [LoggerMessage(LogLevel.Information, "In RecordPurchaseFunction, successfully verified {AcknowledgementState} purchase with Google, checking license table")]
+    private static partial void LogPurchaseVerified(ILogger logger, string AcknowledgementState);
+
+    [LoggerMessage(LogLevel.Error, "In RecordPurchaseFunction, could not verify purchase with Google")]
+    private static partial void LogPurchaseVerificationFailed(ILogger logger);
+
+    [LoggerMessage(LogLevel.Information, "The '{name}' web service function is processing a request.")]
+    private partial void LogRecordAndroidPurchaseProcessing(string name = nameof(RecordAndroidPurchase));
+
+    [LoggerMessage(LogLevel.Information, "successfully deserialized androidPurchase from request")]
+    private partial void LogAndroidPurchaseDeserialized();
+
+    [LoggerMessage(LogLevel.Error, "In 'recordpurchase', Exception deserializing product")]
+    private partial void LogRecordPurchaseDeserializationError(Exception ex);
 }

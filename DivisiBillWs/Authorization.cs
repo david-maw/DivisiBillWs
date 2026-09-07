@@ -1,10 +1,11 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 
 namespace DivisiBillWs;
 
-internal class Authorization
+internal partial class Authorization
 {
     internal const string PurchaseHeaderName = "divisibill-android-purchase";
     internal const string TokenHeaderName = "divisibill-token";
@@ -77,7 +78,7 @@ internal class Authorization
               && PlayStore.VerifyPurchase(logger, androidPurchase)) // See if the play store is happy with it
             return true;
         else
-            logger.LogError("In GetIsAuthorizedAsync, error licenseStore.GetScans returned {Scans}", i);
+            LogGetIsAuthorizedAsyncError(i);
         return false;
     }
 
@@ -108,7 +109,7 @@ internal class Authorization
                 }
                 catch (Exception ex)
                 {
-                    loggerParam.LogError(ex, "In ProLicenseFromRequest, exception deserializing product from header: {Message}", ex.Message);
+                    LogProLicenseDeserializationError(loggerParam, ex, ex.Message);
                 }
             }
         }
@@ -179,7 +180,7 @@ internal class Authorization
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "In GetIsVerified, exception deserializing product: {Message}", ex.Message);
+            LogVerifyAndroidPurchaseDeserializationError(ex, ex.Message);
             androidPurchase = null;
         }
 
@@ -207,7 +208,7 @@ internal class Authorization
 
                 if (migrationSource != null && androidPurchase.ObfuscatedAccountId != null)
                 {
-                    logger.LogInformation("Starting migration for {OrderId} from {MigrationSource} to {newKey}", androidPurchase.OrderId, migrationSource, androidPurchase.ObfuscatedAccountId);
+                    LogMigrationStarting(androidPurchase.OrderId, migrationSource, androidPurchase.ObfuscatedAccountId);
                     MigrationClass rename = new(logger);
                     await rename.RenameAsNeeded(migrationSource, androidPurchase.ObfuscatedAccountId, httpRequest);
                 }
@@ -219,4 +220,16 @@ internal class Authorization
         }
         return new BadRequestObjectResult("Unknown failure in GetIsVerifiedAsyncV2");
     }
+
+    [LoggerMessage(LogLevel.Error, "In ProLicenseFromRequest, exception deserializing product from header: {Message}")]
+    private static partial void LogProLicenseDeserializationError(ILogger logger, Exception ex, string Message);
+
+    [LoggerMessage(LogLevel.Error, "In GetIsVerified, exception deserializing product: {Message}")]
+    private partial void LogVerifyAndroidPurchaseDeserializationError(Exception ex, string Message);
+
+    [LoggerMessage(LogLevel.Information, "Starting migration for {OrderId} from {MigrationSource} to {newKey}")]
+    private partial void LogMigrationStarting(string OrderId, string MigrationSource, string newKey);
+
+    [LoggerMessage(LogLevel.Error, "In GetIsAuthorizedAsync, error licenseStore.GetScans returned {Scans}")]
+    private partial void LogGetIsAuthorizedAsyncError(int Scans);
 }
