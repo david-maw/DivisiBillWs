@@ -1,10 +1,9 @@
-using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DivisiBillWs;
 
-public class ProPurchaseNotifyFunction(ILogger<ProPurchaseNotifyFunction> logger, BlobContainerClient blobContainer)
+public class ProPurchaseNotifyFunction(ILogger<ProPurchaseNotifyFunction> logger)
 {
     private readonly LicenseStore licenseStore = new(logger);
 
