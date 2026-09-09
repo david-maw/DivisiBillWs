@@ -45,10 +45,9 @@ internal partial class Authorization
                 return userKey;// early exit, a valid token was provided, so no need to recheck the purchase license
         }
         // If we reach here then authorize the hard way, by looking at the license
-        // for old license records with no obfuscated account id we return the order id instead
         AndroidPurchase? androidPurchase = await ProLicenseFromRequestAsync(logger, httpRequest); // Extract a pro purchase from the header
         return (androidPurchase != null && await GetIsAuthorizedAsync(androidPurchase))
-            ? androidPurchase.ObfuscatedAccountId ?? androidPurchase.OrderId! // This is a new pro licensee legitimately issued 
+            ? androidPurchase.ObfuscatedAccountId // This is a new pro licensee legitimately issued 
             : null;
     }
 

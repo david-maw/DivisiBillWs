@@ -1,5 +1,4 @@
 ﻿using Google.Apis.AndroidPublisher.v3.Data;
-using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -49,13 +48,15 @@ internal static partial class PlayStore
         if (androidPurchase == null)
             LogVerifyPurchaseNullPurchase(logger);
         else if (string.IsNullOrEmpty(androidPurchase.PackageName))
-            LogVerifyPurchaseMissingPackageName(logger, nameof(AndroidPurchase.PackageName));
+            LogVerifyPurchaseMissingPropertyName(logger, nameof(AndroidPurchase.PackageName));
         else if (!androidPurchase.PackageName.Equals(LicenseStore.ExpectedPackageName)) // only DivisiBill Licenses can be used
             LogVerifyPurchaseInvalidPackageName(logger, androidPurchase.PackageName);
         else if (string.IsNullOrEmpty(androidPurchase.ProductId))
-            LogVerifyPurchaseMissingProductId(logger, nameof(AndroidPurchase.ProductId));
+            LogVerifyPurchaseMissingPropertyName(logger, nameof(AndroidPurchase.ProductId));
         else if (string.IsNullOrEmpty(androidPurchase.PurchaseToken))
-            LogVerifyPurchaseMissingPurchaseToken(logger, nameof(AndroidPurchase.PurchaseToken));
+            LogVerifyPurchaseMissingPropertyName(logger, nameof(AndroidPurchase.PurchaseToken));
+        else if (string.IsNullOrEmpty(androidPurchase.ObfuscatedAccountId))
+            LogVerifyPurchaseMissingPropertyName(logger, nameof(AndroidPurchase.ObfuscatedAccountId));
         else
         {
             LogVerifyPurchaseAndroidPurchaseDetails(logger,
@@ -103,7 +104,7 @@ internal static partial class PlayStore
             }
             else
             {
-                ProductPurchase? verifiedPurchase = null;
+                ProductPurchase? verifiedPurchase;
                 try
                 {
                     verifiedPurchase = doNotCallPlayStore
@@ -166,16 +167,10 @@ internal static partial class PlayStore
     static partial void LogVerifyPurchaseNullPurchase(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "In VerifyPurchase, could not extract a {PropertyName}")]
-    static partial void LogVerifyPurchaseMissingPackageName(ILogger logger, string PropertyName);
+    static partial void LogVerifyPurchaseMissingPropertyName(ILogger logger, string PropertyName);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "In VerifyPurchase, package name was not com.autoplus.divisibill: {PackageName}")]
     static partial void LogVerifyPurchaseInvalidPackageName(ILogger logger, string PackageName);
-
-    [LoggerMessage(Level = LogLevel.Error, Message = "In VerifyPurchase, could not extract a {PropertyName}")]
-    static partial void LogVerifyPurchaseMissingProductId(ILogger logger, string PropertyName);
-
-    [LoggerMessage(Level = LogLevel.Error, Message = "In VerifyPurchase, could not extract a {PropertyName}")]
-    static partial void LogVerifyPurchaseMissingPurchaseToken(ILogger logger, string PropertyName);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "In VerifyPurchase androidPurchase OrderId:{OrderId} PackageName:{PackageName} ProductId:{ProductId} ObfuscatedAccountId:{ObfuscatedAccountId} PurchaseToken:{PurchaseToken}")]
     static partial void LogVerifyPurchaseAndroidPurchaseDetails(ILogger logger, string? OrderId, string PackageName, string ProductId, string? ObfuscatedAccountId, string PurchaseToken);
