@@ -37,6 +37,9 @@ var host = new HostBuilder()
             return new BlobContainerClient(connectionString, "images");
         });
     })
-    .Build();
+    .ConfigureLogging(logging =>
+    {
+        logging.AddFilter("Microsoft.Azure.Functions.Worker.Invocation", LogLevel.Warning);
+    }).Build();
 // AzureEventSourceListener.CreateConsoleLogger(); // Use this to audit Azure SDK calls, but it will log a lot of information, so use it only for debugging purposes.
 host.Run();
