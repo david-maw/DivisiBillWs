@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 
 namespace DivisiBillWs;
@@ -204,15 +203,22 @@ internal partial class Authorization
                     await licenseStore.UpdateTimeUsedAsync(androidPurchase.OrderId);
                 }
                 // If there's a pending Migration operation, start it
-                string? migrationSource = await licenseStore.GetMigrationSourceAsync(androidPurchase!);
+                string? migrationSource = await licenseStore.GetMigrationSourceAsync(androidPurchase.OrderId);
 
-                if (migrationSource != null && androidPurchase.ObfuscatedAccountId != null)
+                if (!string.IsNullOrWhiteSpace(migrationSource) && androidPurchase.ObfuscatedAccountId != null)
                 {
                     LogMigrationStarting(androidPurchase.OrderId, migrationSource, androidPurchase.ObfuscatedAccountId);
-                    MigrationClass rename = new(logger);
-                    await rename.RenameAsNeeded(migrationSource, androidPurchase.ObfuscatedAccountId, httpRequest);
+                    MigrationClass migration = new(logger);
+                    var result = await migration.RenameAsNeeded(migrationSource, androidPurchase.ObfuscatedAccountId, httpRequest);
+                    if (result is not OkObjectResult)
+                        return result;
+                    else
+                    {
+                        await licenseStore.DeleteMigrationSourceAsync(androidPurchase.OrderId);
+                    }
                 }
-
+                else
+                    LogMigrationUnnecessary(androidPurchase.OrderId);
                 return new OkObjectResult(scans.ToString());
             }
             else
@@ -229,6 +235,9 @@ internal partial class Authorization
 
     [LoggerMessage(LogLevel.Information, "Starting migration for {OrderId} from {MigrationSource} to {newKey}")]
     private partial void LogMigrationStarting(string OrderId, string MigrationSource, string newKey);
+
+    [LoggerMessage(LogLevel.Information, "Migration unnecessary for {OrderId}")]
+    private partial void LogMigrationUnnecessary(string OrderId);
 
     [LoggerMessage(LogLevel.Error, "In GetIsAuthorizedAsync, error licenseStore.GetScans returned {Scans}")]
     private partial void LogGetIsAuthorizedAsyncError(int Scans);

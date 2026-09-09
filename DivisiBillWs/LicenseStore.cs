@@ -1,6 +1,5 @@
 ﻿using Azure;
 using Azure.Data.Tables;
-using Microsoft.Extensions.Logging;
 
 namespace DivisiBillWs;
 
@@ -228,37 +227,56 @@ internal partial class LicenseStore
     }
 
     /// <summary>
-    /// <para>Return the number of available scans associated with a license. Start by making sure it is known (by its ProOrderId and PurchaseToken).</para>
-    /// <para>If the stored license has no PurchaseToken then give it the one from the incoming license as long as that PurchaseToken is not already in use somewhere else.</para>
+    /// <para>Return the migration source associated with a license. Start by making sure it is known (by its ProOrderId).</para>
     /// </summary>
-    /// <param name="androidPurchase">The purchase object representing the license</param>
-    /// <returns>The number of scans remaining for this license or -1 if the license was not found</returns>
-    public async Task<string?> GetMigrationSourceAsync(AndroidPurchase androidPurchase)
+    /// <param name="orderId">The order ID of the license</param>
+    /// <returns>The migration source associated with the license or null if not found</returns>
+    public async Task<string?> GetMigrationSourceAsync(string orderId)
     {
-        ArgumentException.ThrowIfNullOrEmpty(androidPurchase.OrderId);
-        ArgumentException.ThrowIfNullOrEmpty(androidPurchase.PurchaseToken); // can be validated by calling Google
+        ArgumentException.ThrowIfNullOrEmpty(orderId);
 
         NullableResponse<PurchaseInfo> purchaseInfoResponse = await tableClient.GetEntityIfExistsAsync<PurchaseInfo>(
-            rowKey: androidPurchase.OrderId,
+            rowKey: orderId,
             partitionKey: PartitionKeyName
             );
         if (purchaseInfoResponse.HasValue && purchaseInfoResponse?.Value is PurchaseInfo purchaseInfo)
         {
-            if (purchaseInfo.PurchaseToken.Equals(androidPurchase.PurchaseToken))
-            {
-                LogGetMigrationSourceSuccess(logger, tableClient.Name, PartitionKeyName, androidPurchase.OrderId, purchaseInfo.MigrationSource);
-                return purchaseInfo.MigrationSource;
-            }
-            else
-            {
-                LogGetMigrationSourceTokenMismatch(logger, tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
-                return null;
-            }
+            LogGetMigrationSourceSuccess(logger, orderId, purchaseInfo.MigrationSource);
+            return purchaseInfo.MigrationSource;
         }
         else
         {
-            LogGetMigrationSourceNotFound(logger, tableClient.Name, PartitionKeyName, androidPurchase.OrderId);
+            LogMigrationSourceNotFound(logger, orderId);
             return null;
+        }
+    }
+
+    /// <summary>
+    /// <para>Delete the migration source associated with a license. Start by making sure it is known (by its ProOrderId).</para>
+    /// </summary>
+    /// <param name="orderId">The order ID of the license</param>
+    public async Task DeleteMigrationSourceAsync(string orderId)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(orderId);
+        var purchaseInfoResponse = await tableClient.GetEntityIfExistsAsync<TableEntity>(
+            rowKey: orderId,
+            partitionKey: PartitionKeyName
+            );
+        if (purchaseInfoResponse.HasValue && purchaseInfoResponse.Value is not null)
+        {
+            var entity = purchaseInfoResponse.Value;
+            // Remove the property (dictionary remove)
+            entity.Remove("MigrationSource");
+            // Replace the entity so the field is actually deleted
+            var response = await tableClient.UpdateEntityAsync(entity, entity.ETag, TableUpdateMode.Replace);
+            if (!response.IsError)
+                LogDeleteMigrationSourceSuccess(logger, orderId);
+            else
+                LogDeleteMigrationSourceFailure(logger, orderId, response.Status);
+        }
+        else
+        {
+            LogMigrationSourceNotFound(logger, orderId);
         }
     }
 
@@ -438,14 +456,17 @@ internal partial class LicenseStore
     [LoggerMessage(Level = LogLevel.Error, Message = "In LicenseStore.GetScans, {tableName}[{partitionKeyName}, {orderId}] not found, returning error")]
     static partial void LogGetScansNotFound(ILogger logger, string tableName, string partitionKeyName, string orderId);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "In LicenseStore.GetMigrationSource, {tableName}[{partitionKeyName}, {orderId}] has value, returning {migrationSource}")]
-    static partial void LogGetMigrationSourceSuccess(ILogger logger, string tableName, string partitionKeyName, string orderId, string migrationSource);
+    [LoggerMessage(Level = LogLevel.Information, Message = "In LicenseStore.GetMigrationSource for {orderId}, returning {migrationSource}")]
+    static partial void LogGetMigrationSourceSuccess(ILogger logger, string orderId, string migrationSource);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "In LicenseStore.GetMigrationSource, {tableName}[{partitionKeyName}, {orderId}] stored purchase token does not match, returning error")]
-    static partial void LogGetMigrationSourceTokenMismatch(ILogger logger, string tableName, string partitionKeyName, string orderId);
+    [LoggerMessage(Level = LogLevel.Error, Message = "In LicenseStore for {orderId}, MigrationSource field not found")]
+    static partial void LogMigrationSourceNotFound(ILogger logger, string orderId);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "In LicenseStore.GetMigrationSource, {tableName}[{partitionKeyName}, {orderId}] not found, returning error")]
-    static partial void LogGetMigrationSourceNotFound(ILogger logger, string tableName, string partitionKeyName, string orderId);
+    [LoggerMessage(Level = LogLevel.Information, Message = "In LicenseStore.DeleteMigrationSource for {orderId}, MigrationSource field deleted")]
+    static partial void LogDeleteMigrationSourceSuccess(ILogger logger, string orderId);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "In LicenseStore.DeleteMigrationSource for {orderId}, MigrationSource deletion failed, code = {responseCode}")]
+    static partial void LogDeleteMigrationSourceFailure(ILogger logger, string orderId, int responseCode);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "In LicenseStore.Record, {tableName}[{partitionKeyName}, {orderId}] has value, returning error")]
     static partial void LogRecordAlreadyExists(ILogger logger, string tableName, string partitionKeyName, string orderId);
