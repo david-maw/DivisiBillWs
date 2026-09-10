@@ -53,11 +53,12 @@ public partial class CleanupFunction
     /// <returns></returns>
     private async Task CleanupDeletedImages()
     {
+        LogCleanupDeletedImagesExecuted();
+        if (imagesBlobContainer == null)
+            return;
+
         try
         {
-            if (imagesBlobContainer == null)
-                return;
-
             string yyymmddhhmmssNinetyDaysAgo = DateTime.Now.AddDays(-90).ToString("yyyyMMddHHmmss");
             var blobItems = imagesBlobContainer.GetBlobsAsync();
             string prefixToIgnore = "";
@@ -94,11 +95,14 @@ public partial class CleanupFunction
     [LoggerMessage(LogLevel.Information, "CleanupFunction executed at: {executionTime}")]
     private partial void LogCleanupFunctionExecuted(DateTime executionTime);
 
-    [LoggerMessage(LogLevel.Information, "ManualCleanupFunction executed")]
+    [LoggerMessage(LogLevel.Information, "ManualCleanup executed")]
     private partial void LogManualCleanupExecuted();
 
     [LoggerMessage(LogLevel.Information, "In CleanupFunction, next timer schedule at: {nextSchedule}")]
     private partial void LogCleanupFunctionNextSchedule(DateTime nextSchedule);
+
+    [LoggerMessage(LogLevel.Information, "CleanupDeletedImages executed")]
+    private partial void LogCleanupDeletedImagesExecuted();
 
     [LoggerMessage(LogLevel.Information, "Checking blobs for {prefix}.")]
     private partial void LogCheckingBlobs(string prefix);
