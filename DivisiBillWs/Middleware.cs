@@ -1,6 +1,5 @@
 ﻿using Microsoft.Azure.Functions.Worker.Middleware;
 using System.Text.Json;
-using Microsoft.Extensions.Logging;
 
 namespace DivisiBillWs;
 
@@ -57,12 +56,12 @@ public partial class CustomExceptionHandler(ILogger<CustomExceptionHandler> logg
             string responseBody = JsonSerializer.Serialize(errorMessage, jsonOptions);
             await response.WriteStringAsync(responseBody);
             context.GetInvocationResult().Value = response;
-            LogExceptionThrown(ex, context.FunctionDefinition.Name);
+            LogExceptionThrown(context.FunctionDefinition.Name, ex.Message);
         }
     }
 
-    [LoggerMessage(LogLevel.Error, "Exception Thrown Invoking '{FunctionName}'")]
-    private partial void LogExceptionThrown(Exception ex, string FunctionName);
+    [LoggerMessage(LogLevel.Error, "Exception Thrown Invoking '{FunctionName}': {ExceptionMessage}")]
+    private partial void LogExceptionThrown(string FunctionName, string ExceptionMessage);
 }
 /// <summary>
 /// A concrete class to authenticate most functions with specific exceptions
