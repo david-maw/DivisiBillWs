@@ -1,8 +1,6 @@
-using Azure.Monitor.OpenTelemetry.Exporter;
 using Azure.Storage.Blobs;
 using DivisiBillWs;
 using Microsoft.Azure.Functions.Worker.Builder;
-using Microsoft.Azure.Functions.Worker.OpenTelemetry;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Sentry.Azure.Functions.Worker;
@@ -11,12 +9,12 @@ var builder = FunctionsApplication.CreateBuilder(args);
 
 builder.ConfigureFunctionsWebApplication();
 
-if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING")))
-{
-    builder.Services.AddOpenTelemetry()
-        .UseFunctionsWorkerDefaults()
-        .UseAzureMonitorExporter();
-}
+//if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("APPLICATIONINSIGHTS_CONNECTION_STRING")))
+//{
+//    builder.Services.AddOpenTelemetry()
+//        .UseFunctionsWorkerDefaults()
+//        .UseAzureMonitorExporter();
+//}
 builder.UseMiddleware<CustomExceptionHandler>();
 builder.UseMiddleware<AuthenticationMiddleware>();
 
