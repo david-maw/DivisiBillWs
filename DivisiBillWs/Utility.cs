@@ -18,14 +18,16 @@ internal static class Extensions
         for (int i = 0; i < chars.Length; i++)
         {
             char c = chars[i];
-            chars[i] = c is >= '0' and <= '9' ? (char)('0' + '9' - c) : c;
+            if (c is < '0' or > '9')
+                return string.Empty; // Invalid character found, return empty string
+            chars[i] = (char)('0' + '9' - c);
         }
         return new string(chars);
     }
 
     /// <summary>
     /// Validates that a string is a 14 digit integer name intended to store yyyymmddhhmmss 
-    /// however the only constant on the number is that yyyy be <= 3000
+    /// however the only constraint on the number is that yyyy be <= 3000
     /// </summary>
     /// <param name="input"></param>
     /// <returns></returns>
@@ -119,9 +121,9 @@ internal static class Utility
 
         return null;
     }
-    internal static DateTime DateTimeFromyyyymmddhhmmss(string yyyymmddhhmmss)
+    internal static DateTime DateTimeFromyyyymmddhhmmss(string s)
     {
-        string s = Path.GetFileNameWithoutExtension(yyyymmddhhmmss);
+        if (string.IsNullOrWhiteSpace(s)) return DateTime.MinValue;
         if (s.Length == 14
             && int.TryParse(s[..4], out int y)
             && y > 2010 && y < 2030

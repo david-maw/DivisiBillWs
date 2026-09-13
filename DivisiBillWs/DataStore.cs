@@ -3,7 +3,6 @@ using Azure.Data.Tables;
 using Azure.Storage.Blobs;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
 namespace DivisiBillWs;
@@ -495,6 +494,13 @@ internal partial class DataStore<T> where T : StorageClass, new()
         var currentSchedule = Schedule[0];
         await foreach (var entity in entities)
         {
+            if (string.IsNullOrWhiteSpace(entity.RowKey) || string.IsNullOrWhiteSpace(entity.PartitionKey))
+            {
+                // One of the keys is invalid, just delete the entry. This should never happen, but if it does, we want to clean it up.
+                await tableClient.DeleteEntityAsync(entity.PartitionKey, entity.RowKey);
+                LogCleanupAllUsersDeletedInvalidItem(logger, tableClient.Name);
+                continue;
+            }
             if (!partKey.Equals(entity.PartitionKey, StringComparison.Ordinal))
             {
                 // A new user, reset everything
@@ -603,4 +609,7 @@ internal partial class DataStore<T> where T : StorageClass, new()
 
     [LoggerMessage(Level = LogLevel.Information, Message = "In DataStore.CleanupAllUsers for {TableName}, deleted item for {Time}")]
     static partial void LogCleanupAllUsersDeletedItem(ILogger logger, string TableName, DateTime Time);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "In DataStore.CleanupAllUsers for {TableName}, deleted item with invalid key")]
+    static partial void LogCleanupAllUsersDeletedInvalidItem(ILogger logger, string TableName);
 }
